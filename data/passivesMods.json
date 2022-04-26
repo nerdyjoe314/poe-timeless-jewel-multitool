@@ -1722,6 +1722,42 @@
             ]
         }
     },
+    "Leathal Pride": {
+        "regular": {
+            "Example Name": [
+                "Example Stat"
+            ]
+        },
+        "notable": {
+            "Example Name": [
+                "+20 to Strength",
+                "5% increased Strength",
+                "20% increased Armor",
+                "0.4% of Attack Damage Leeched as Life",
+                "5% chance to deal Double Damage",
+                "4% increased maximum Life",
+                "+1 to maximum Fortification",
+                "Regenerate 1% of Life per second",
+                "+20% to Fire Resistance",
+                "20% increased Melee Damage",
+                "You take 10% reduced Extra Damage from Critical Strikes",
+                "30% increased Melee Critical Strike Chance",
+                "20% increased Burning Damage",
+                "20% increased Totem Damage",
+                "+15% to Melee Critical Strike Multiplier",
+                "20% increased Physical Damage",
+                "8% increased Warcry Buff Effect",
+                "12% increased Totem Placement Speed",
+                "20% increased Stun Duration on Enemies",
+                "Ignites you inflict deal Damage 10% faster",
+                "10% reduced Enemy Stun Threshold",
+                "Gain 5% of Physical Damage as Extra Fire Damage",
+                "5% of Physical Damage from Hits taken as Fire Damage",
+                "5% chance to gain an Endurance Charge on Kill",
+                "10% chance to Intimidate Enemies for 4 seconds on Hit"
+            ]
+        }
+    },
     "Brutal Restraint": {
         "regular": {
             "Example Name": [
@@ -1733,10 +1769,31 @@
         },
         "notable": {
             "Example Name": [
-                "Example Stat"
-            ],
-            "Example Name": [
-                "Example Stat"
+                "+20 to Dexterity",
+                "5% increased Dexterity",
+                "20% increased Evasion Rating",
+                "10% increased Flask Charges gained",
+                "5% increased Attack and Cast Speed",
+                "4% increased maximum Life",
+                "5% chance to Blind Enemies on Hit",
+                "5% increased Movement Speed",
+                "+20% to Cold Resistance",
+                "20% increased Projectile Damage",
+                "20% chance to Avoid being Stunned",
+                "25% increased Critical Strike Chance",
+                "20% increased Damage with Poison",
+                "Minions deal 20% increased Damage",
+                "5% increased Global Accuracy Rating",
+                "20% increased Elemental Damage",
+                "8% increased effect of Non-Curse Auras from your Skills",
+                "Minions have 15% increased Movement Speed",
+                "10% increased Duration of Elemental Ailments on Enemies",
+                "Poisons you inflict deal Damage 10% faster",
+                "10% increased Effect of Non-Damaging Ailments",
+                "Gain 5% of Physical Damage as Extra Cold Damage",
+                "25% chance to gain Alchemist's Genius when you use a Flask",
+                "5% chance to gain a Frenzy Charge on Kill",
+                "You gain Onslaught for 8 seconds on Kill"
             ]
         }
     },
@@ -1744,34 +1801,142 @@
         "regular": {
             "Example Name": [
                 "Example Stat"
-            ],
-            "Example Name": [
-                "Example Stat"
             ]
         },
         "notable": {
-            "Example Name": [
+            "Flawless Execution": [
                 "Example Stat"
             ],
-            "Example Name": [
-                "Example Stat"
-            ]
-        }
-    },
-    "Leathal Pride": {
-        "regular": {
-            "Example Name": [
+            "Brutal Execution": [
                 "Example Stat"
             ],
-            "Example Name": [
-                "Example Stat"
-            ]
-        },
-        "notable": {
-            "Example Name": [
+            "Eternal Resilience": [
                 "Example Stat"
             ],
-            "Example Name": [
+            "Eternal Fortitude": [
+                "Example Stat"
+            ],
+            "Eternal Dominance": [
+                "Example Stat"
+            ],
+            "Eternal Fervour": [
+                "Example Stat"
+            ],
+            "Eternal Adaptiveness": [
+                "Example Stat"
+            ],
+            "Eternal Bloodlust": [
+                "Example Stat"
+            ],
+            "Eternal Subjugation": [
+                "Example Stat"
+            ],
+            "Eternal Separation": [
+                "Example Stat"
+            ],
+            "Eternal Exploitation": [
+                "Example Stat"
+            ],
+            "Rites of Lunaris": [
+                "Example Stat"
+            ],
+            "Rites of Solaris": [
+                "Example Stat"
+            ],
+            "Virtue Gem Surgery": [
+                "Example Stat"
+            ],
+            "Rural Life": [
+                "Example Stat"
+            ],
+            "City Walls": [
+                "Example Stat"
+            ],
+            "Sceptre Pinnacle": [
+                "Example Stat"
+            ],
+            "Secret Tunnels": [
+                "Example Stat"
+            ],
+            "Purity Rebel": [
+                "Example Stat"
+            ],
+            "Superiority": [
+                "Example Stat"
+            ],
+            "Slum Lord": [
+                "Example Stat"
+            ],
+            "Axiom Warden": [
+                "Example Stat"
+            ],
+            "Gemling Inquisition": [
+                "Example Stat"
+            ],
+            "Gemling Ambush": [
+                "Example Stat"
+            ],
+            "Night of a Thousand Ribbons": [
+                "Example Stat"
+            ],
+            "Bloody Flowers' Rebellion": [
+                "Example Stat"
+            ],
+            "Chitus' Heart": [
+                "Example Stat"
+            ],
+            "Gemling Training": [
+                "Example Stat"
+            ],
+            "Rigwald's Might": [
+                "Example Stat"
+            ],
+            "Geofri's End": [
+                "Example Stat"
+            ],
+            "Lioneye's Focus": [
+                "Example Stat"
+            ],
+            "Voll's Coup": [
+                "Example Stat"
+            ],
+            "Dialla's Wit": [
+                "Example Stat"
+            ],
+            "Discerning Taste": [
+                "Example Stat"
+            ],
+            "Gleaming Legion": [
+                "Example Stat"
+            ],
+            "Shadowy Streets": [
+                "Example Stat"
+            ],
+            "Crematorium Worker": [
+                "Example Stat"
+            ],
+            "Street Urchin": [
+                "Example Stat"
+            ],
+            "Baleful Augmentation": [
+                "Example Stat"
+            ],
+            "With Eyes Open": [
+                "Example Stat"
+            ],
+            "Robust Diet": [
+                "Example Stat"
+            ],
+            "Pooled Resources": [
+                "Example Stat"
+            ],
+            "Laureate": [
+                "Example Stat"
+            ],
+            "War Games": [
+                "Example Stat"
+            ],
+            "Freshly Brewed": [
                 "Example Stat"
             ]
         }
@@ -1780,16 +1945,43 @@
         "regular": {
             "Example Name": [
                 "Example Stat"
-            ],
-            "Example Name": [
-                "Example Stat"
             ]
         },
         "notable": {
-            "Example Name": [
+            "Heated Devotion": [
                 "Example Stat"
             ],
-            "Example Name": [
+            "Calming Devotion": [
+                "Example Stat"
+            ],
+            "Thundrous Devotion": [
+                "Example Stat"
+            ],
+            "Thoughts and Prayers": [
+                "Example Stat"
+            ],
+            "Zealot": [
+                "Example Stat"
+            ],
+            "Enduring Faith": [
+                "Example Stat"
+            ],
+            "Powerful Faith": [
+                "Example Stat"
+            ],
+            "Martyr's Might": [
+                "Example Stat"
+            ],
+            "Intolerance of Sin": [
+                "Example Stat"
+            ],
+            "Smite the Wicked": [
+                "Example Stat"
+            ],
+            "Smite the Ignorant": [
+                "Example Stat"
+            ],
+            "Smite the Heretical": [
                 "Example Stat"
             ]
         }
