@@ -8,7 +8,6 @@ import keyboard
 
 from multiprocessing import Value, Process
 from queue import Queue
-from pymongo import MongoClient
 from bson.objectid import ObjectId
 from datetime import datetime
 
@@ -24,6 +23,8 @@ class Bot:
             level=logging.INFO,
             format="%(asctime)s %(message)s",
             datefmt="[%H:%M:%S %d-%m-%Y]",
+            filename="jewels.log",
+            encoding='utf-8',
         )
         self.log = logging.getLogger("bot")
         self.config = get_config("bot")
@@ -32,7 +33,6 @@ class Bot:
 
         self.trader = Trader(self.resolution, self.config["accept_trades"])
         self.input_handler = InputHandler(self.resolution)
-        self.db = MongoClient(self.config["db_url"])[self.config["db_name"]]
         self.halt = Value("i", False)
         self.hotkey_killer = Process(
             target=hotkey_killer, args=(self.halt, self.config["exit_hotkey"])
@@ -41,10 +41,12 @@ class Bot:
         self.hotkey_killer.start()
 
     def loop(self):
-        self.log.info(
+#        self.log.info(
+        print(
             "Quit the application by pressing %s" % self.config["exit_hotkey"]
         )
-        self.log.info(
+#        self.log.info(
+        print(
             "Bot starts in %s seconds. Please tab into the game client."
             % self.config["initial_sleep"]
         )
@@ -59,7 +61,7 @@ class Bot:
                 if not successfully_received:
                     continue
             else:
-                username = "N/A"
+                username = "nerdyjoe314"
             jewel_locations, descriptions = self.trader.get_jewel_locations()
             self.log.info("Got %s new jewels" % len(jewel_locations))
             long_break_at_idx = np.random.choice(
@@ -77,16 +79,6 @@ class Bot:
                     self.log.info("Taking a break of around 5 minutes.")
                     self.input_handler.rnd_sleep(mean=300000, sigma=100000, min=120000)
 
-                stored_equivalents = self.db["jewels"].find(
-                    {"description": descriptions[idx]}
-                )
-                if stored_equivalents.count() > 0:
-                    self.log.info(
-                        "Jewel with descriptions %s is already analyzed, skipping!"
-                        % descriptions[idx]
-                    )
-                    continue
-
                 self.tree_nav = TreeNavigator(self.resolution, self.halt)
                 analysis_time = datetime.utcnow()
                 name, description, socket_instances = self.tree_nav.eval_jewel(
@@ -95,6 +87,10 @@ class Bot:
                 if socket_instances is None:
                     self.log.info("No socket instances returned. Exiting.")
                     return
+                print(
+                    "Jewel evaluation took %s seconds"
+                    % (datetime.utcnow() - analysis_time).seconds
+                )
                 self.log.info(
                     "Jewel evaluation took %s seconds"
                     % (datetime.utcnow() - analysis_time).seconds
@@ -105,7 +101,7 @@ class Bot:
                     socket["created"] = analysis_time
                     socket["reporter"] = username
 
-                self.store_items(socket_instances)
+#                self.store_items(socket_instances)
 
             if self.config["accept_trades"]:
                 self.trader.return_items(username, jewel_locations)
@@ -113,21 +109,19 @@ class Bot:
                 self.log.info("Inventory analysis complete!")
                 break
 
-    def store_items(self, socket_instances):
-        # Add some filtered summed values for easier querying
-        for jewel_inst in socket_instances:
-            jewel_inst["summed_mods"] = {}
-            for node in jewel_inst["socket_nodes"]:
-                for mod in node["mods"]:
-                    filt_mod, value = filter_mod(mod, regex=self.nonalpha_re)
-                    if filt_mod in jewel_inst["summed_mods"]:
-                        jewel_inst["summed_mods"][filt_mod] += value
-                    else:
-                        jewel_inst["summed_mods"][filt_mod] = value
+#    def store_items(self, socket_instances):
+#        # Add some filtered summed values for easier querying
+#        for jewel_inst in socket_instances:
+#            jewel_inst["summed_mods"] = {}
+#            for node in jewel_inst["socket_nodes"]:
+#                for mod in node["mods"]:
+#                    filt_mod, value = filter_mod(mod, regex=self.nonalpha_re)
+#                    if filt_mod in jewel_inst["summed_mods"]:
+#                        jewel_inst["summed_mods"][filt_mod] += value
+#                    else:
+#                        jewel_inst["summed_mods"][filt_mod] = value
 
-        result = self.db["jewels"].insert_many(socket_instances)
-        self.log.info("Stored %s analyzed jewel sockets!" % len(socket_instances))
-        return result
+        #return result
 
     def split_res(self, resolution):
         resolution = [int(n) for n in resolution.split("x")]

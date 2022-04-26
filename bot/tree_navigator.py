@@ -1,3 +1,12 @@
+#############################################################################################################################
+#                                                                                                                           #
+#  This file has been modified since it's previous version on https://github.com/johanmodin/poe-timeless-jewel-multitool    #
+#  All changes since that version are covered by the CC BY 4.0 license                                                      #
+#  I am not a lawyer, this notice is made in good faith to satisfy 4 (b) of the prior Apache License Version 2.0            #
+#                                                                                                                           #
+#############################################################################################################################
+
+
 import logging
 import cv2
 import numpy as np
@@ -6,46 +15,59 @@ import os
 import time
 import json
 import re
-import pickle
 
 from PIL import Image
 
-#two kinds of coordinates: 
-#absolute tree coordinates, which match the json perfectly. these are prefixed by tree_ (origin center of scion)
-#screen coordinates, which describe where on the screen things are (origin top left pixel on screen)
-
 from multiprocessing import Pool
-from Levenshtein import distance
+
+#coordinates: 
+#absolute tree coordinates, which match the json perfectly. these are prefixed by tree_ (origin center of scion)
+#screen coordinates, which describe where on the screen things are
+#to convert from tree coordinates to 1080p screen coordinates, multiply by 1080/10000.
+#to convert from tree coordinates to 1440p screen coordinates, multiply by 1440/10000.
+#done refactoring. Only things that involve moving the mouse and screenshots should be in screen coords, everything else is in tree coords
+
 
 from .input_handler import InputHandler
 from .grabscreen import grab_screen
-from .utils import get_config, filter_mod
+from .utils import get_config
 
 # This is a position of the inventory as fraction of the resolution
 OWN_INVENTORY_ORIGIN = (0.6769531, 0.567361)
 
-# This is the ratio for 1080p. We have to generalize for others, and tie it to the resolution specification in config. For now though.
-t2s_scale = 1080/10000.0
 
-#passive tree bounds on where the center can move (in 1080p pixels)
-#used to figure out where we are.
-TREE_BOUND_Y = [-1003,1000]
-TREE_BOUND_X = [-595,595]
+# This is the limit on where the center of the screen can be in the passive tree
+# We use it to figure out where the screen is (at the begining)
+TREE_BOUND_Y = [-9300,9250]
+TREE_BOUND_X = [-5525,5525]
 
 #pull node information from the processed tree
-f=open("data/processed_tree.pckl", 'rb')
-node_coords=pickle.load(f)
-neighbor_nodes=pickle.load(f)
+f=open("data/node_coords.json", 'r')
+node_coords=json.load(f)
+f.close()
+f=open("data/neighbor_nodes.json", 'r')
+neighbor_nodes=json.load(f)
+f.close()
+f=open("data/node_types.json", 'r')
+node_types=json.load(f)
+f.close()
 
-SOCKET_IDS = [6230 , 48768 , 31683 , 
+SOCKET_IDS = [6230, 48768 , 31683 , 
 28475, 33631 , 36634 , 41263 , 33989 , 34483 , 
-54127, 2491 , 26725 , 55190 , 26196 , 7960 , 61419 , 21984 , 61834 , 32763 , 60735 , 46882]
+54127, 2491 , 26725 , 55190 , 26196 , 7960 , 61419 , 21984 , 61834 , 32763 , 60735 , 46882
+]
+
+SOCKET_TYPE_DICT = {6230 : "normal", 48768 : "normal", 31683 : "normal",
+28475 : "normal", 33631 : "normal", 36634 : "normal", 41263 : "normal", 33989 : "normal", 34483 : "normal", 
+54127 : "normal", 26725 : "normal", 26196 : "normal", 61419 : "normal", 61834 : "normal", 60735 : "normal", 
+2491 : "cluster", 55190 : "cluster", 7960 : "cluster", 21984 : "cluster", 32763 : "cluster", 46882 : "cluster",}
 
 IMAGE_FOLDER = "data/images/"
 
-# We're using a lot of template matching and all templates are defined here
+OUTPUT_FOLDER = "data/results/"
+
+# We're using template matching and some of the templates are defined here
 # with matching thresholds (scores) and sizes per resolution
-# the 1440p values can be all sorts of wrong.
 TEMPLATES = {
     "FreeSpace.png": {
         "1440p_size": (41, 41),
@@ -53,25 +75,26 @@ TEMPLATES = {
         "1080p_size": (30, 30),
         "1080p_threshold": 0.98,
     },
-}
-for ID in SOCKET_IDS:
-    TEMPLATES[str(ID)+".png"] = {
-        "1440p_size": (34, 34),
-        "1440p_threshold": 0.95,
+    "1080p_cluster_target.png": {
         "1080p_size": (29, 29),
-        "1080p_threshold": 0.95,
-    }
+        "1080p_threshold": 0.98,
+    },
+    "1080p_normal_target.png": {
+        "1080p_size": (29, 29),
+        "1080p_threshold": 0.98,
+    },
+    "1440p_cluster_target.png": {
+        "1440p_size": (40, 40),
+        "1440p_threshold": 0.98,
+    },
+    "1440p_normal_target.png": {
+        "1440p_size": (40, 40),
+        "1440p_threshold": 0.98,
+    },
+}
 
 # Defines the position of the text box which is cropped out and OCR'd per node
 TXT_BOX = {"x": 32, "y": 0, "w": 900, "h": 320}
-
-mod_files = {
-    "passives": "data/passives.json",
-    "passivesAlt": "data/passivesAlternatives.json",
-    "passivesAdd": "data/passivesAdditions.json",
-    "passivesVaalAdd": "data/passivesVaalAdditions.json",
-}
-
 
 class TreeNavigator:
     def __init__(self, resolution, halt_value):
@@ -83,17 +106,15 @@ class TreeNavigator:
             datefmt="[%H:%M:%S %d-%m-%Y]",
         )
         self.log = logging.getLogger("tree_nav")
+        self.t2s_scale = self.resolution[1]/10000.0
         self.config = get_config("tree_nav")
-        self.find_mod_value_re = re.compile("(\(?(?:[0-9]*\.?[0-9]-?)+\)?)")
-        self.nonalpha_re = re.compile("[^a-zA-Z]")
+        self.modChars = re.compile("[^a-zA-Z\+0\.123456789% -]")
         self.camera_position = (0,0)
         self.px_multiplier = 1
         self.resolution_prefix = str(self.resolution[1]) + "p_"
         self.templates_and_masks = self.load_templates()
-        self.passive_mods, self.passive_names = self.generate_good_strings(mod_files)
-        self.passive_nodes = list(self.passive_mods.keys()) + list(
-            self.passive_names.keys()
-        )
+        f=open("data/passivesMods.json")
+        self.passivesModsData = json.load(f)
         self.halt = halt_value
         self.first_run = True
 
@@ -101,90 +122,205 @@ class TreeNavigator:
         return not bool(self.halt.value)
 
     def eval_jewel(self, item_location):
-        self.camera_position = (0,0)
-        item_name, item_desc = self._setup(item_location, copy=True)
 
+        self.item_name, self.item_desc = self._setup(item_location, copy=True)
         pool = Pool(self.config["ocr_threads"])
         jobs = {}
+        
+        self.modNames = { "regular" : list(self.passivesModsData[self.item_name]["regular"].keys()), 
+                          "notable" : list(self.passivesModsData[self.item_name]["notable"].keys())}
 
-#move all the way bottom right, establish where we are.
-        self._locate_screen(3)
-#analyse nodes
+        # if this is the first time this instance has run, we need to move to a known position
+        if self.first_run:
+        # move all the way bottom right, establish where we are.
+            self._locate_screen(3)
+            self.first_run = False
+
+        # analyse nodes
         for socket_id in SOCKET_IDS:
             self._move_screen_to_node(socket_id)
             socket_nodes = self._analyze_nodes(socket_id)
-#            # Convert stats for the socket from image to lines in separate process
-#            self.log.info("Performing asynchronous OCR")
             jobs[socket_id] = pool.map_async(OCR.node_to_strings, socket_nodes)
-#            self.log.info("Analyzed socket %s" % socket_id)
             if not self._run():
                 return None, None, None
 
+        # collect ocr'd nodes
         self._setup(item_location)
         self.log.info("Waiting for last OCR to finish")
         item_stats = [
             {
                 "socket_id": socket_id,
-                "socket_nodes": self._filter_ocr_lines(
-                    jobs[socket_id].get(timeout=300)
-                ),
+                "socket_nodes":  jobs[socket_id].get(timeout=300),
             }
             for socket_id in jobs
         ]
+        jobs2 = {}
+
+        # Find the jewel number
+        desc_words=self.item_desc.split(" ")
+        jewel_number=0
+        for word in desc_words:
+            if not word.isalpha():
+                jewel_number=int(word)
+
+        node_dict={}
+        # first pass at interpreting the ocr
+        for item_dict in item_stats:
+            rerun_nodes=[]
+            node_dict[item_dict["socket_id"]]={}
+            save_path = os.path.join(OUTPUT_FOLDER, str(jewel_number),str(item_dict["socket_id"])+".json")
+            save_prefix = os.path.join(OUTPUT_FOLDER, str(jewel_number))
+            if not os.path.exists(save_prefix):
+                os.makedirs(save_prefix)
+            all_nodes=self._filter_ocr_lines(item_dict["socket_nodes"])
+            
+
+            ### a_node structure:         {"id": node["id"], "name": names, "mods": mods, "bad_mods": bad_mods, "img": node["img"]}
+            for a_node in all_nodes:
+                #if we're missing the name, add the node to those we want to rerun
+                if len(a_node["name"]) == 0:
+                    rerun_nodes.append(a_node)
+                    continue
+
+                node_name=a_node["name"][0]
+                #if we have a name and a single bad mod, try and fix the 11%
+                if (len(a_node["mods"]) == 0 and len(a_node["bad_mods"]) == 1) or (node_types[str(a_node["id"])] == "notable" and len(a_node["bad_mods"]) == 1):
+                    if self._contains_11(a_node["img"]):
+                        new_mod=a_node["bad_mods"][0]
+                        if "1%" in new_mod:
+                            insert_location = new_mod.find("1%")
+                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
+                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                                a_node["mods"].append(new_mod)
+                                a_node["bad_mods"].pop()
+
+                        elif "n%" in new_mod:
+                            insert_location = new_mod.find("n%")
+                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
+                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                                a_node["mods"].append(new_mod)
+                                a_node["bad_mods"].pop()
+
+                #for every bad mod, try removing the first two or last two characters. sometimes there's dangling trash '12% increased Damage over Time .'
+                for bad_mod in a_node["bad_mods"]:
+                    if bad_mod[2:] in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                        a_node["mods"].append(bad_mod[2:])
+                    if bad_mod[:-2] in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                        a_node["mods"].append(bad_mod[:-2])
+
+                if len(a_node["mods"]) == 0:
+                    rerun_nodes.append(a_node)
+                    continue
+                if node_types[str(a_node["id"])] == "notable" and len(a_node["mods"]) == 1:
+                    rerun_nodes.append(a_node)
+                    continue
+                # otherwise, add the node to the dictionary
+                node_dict[item_dict["socket_id"]][a_node["id"]]={"name" : a_node["name"][0], "mods" : a_node["mods"]}
+            jobs2[item_dict["socket_id"]] = pool.map_async(OCR.node_to_strings2, rerun_nodes)
+
+        second_item_stats = [
+            {
+                "socket_id": socket_id,
+                "socket_nodes":  jobs2[socket_id].get(timeout=300),
+            }
+            for socket_id in jobs2
+        ]
+
+
+        # second pass at interpreting the ocr, only the previous failures come through here
+        for item_dict in second_item_stats:
+            all_nodes=self._filter_ocr_lines(item_dict["socket_nodes"])
+
+            ### a_node structure:         {"id": node["id"], "name": names, "mods": mods, "bad_mods": bad_mods, "img": node["img"]}
+            for a_node in all_nodes:
+                # if we didn't even find a name, we give up and save the image
+                if len(a_node["name"]) == 0:
+                    img= Image.fromarray(a_node["img"])
+                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
+                    img.save(img_save_location)
+                    continue
+                node_name=a_node["name"][0]
+
+                # if we have a name, and only one bad mod, we will try to find '11' in the saved image.
+
+#we then need to identify what the bad mod is, and put an 11% in it.
+#typically the % makes it through ocr, so look for the %
+#then look forward until a space (or beginning of string)
+#replace that section with 11.
+#but actually, do this later.
+#search for the typical offenders: 1% and n%
+
+                if (len(a_node["mods"]) == 0 and len(a_node["bad_mods"]) == 1) or (node_types[str(a_node["id"])] == "notable" and len(a_node["bad_mods"]) == 1):
+                    if self._contains_11(a_node["img"]):
+                        new_mod=a_node["bad_mods"][0]
+                        if "1%" in new_mod:
+                            insert_location = new_mod.find("1%")
+                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
+                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                                a_node["mods"].append(new_mod)
+
+                        elif "n%" in new_mod:
+                            insert_location = new_mod.find("n%")
+                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
+                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
+                                a_node["mods"].append(new_mod)
+
+                # if we still have no mods, save the image and be done processing
+                if len(a_node["mods"]) == 0:
+                    img= Image.fromarray(a_node["img"])
+                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
+                    img.save(img_save_location)
+                    continue
+
+
+                # if we are a notable with only one mod, save the image and be done processing
+                if node_types[str(a_node["id"])] == "notable" and len(a_node["mods"]) == 1:
+                    img= Image.fromarray(a_node["img"])
+                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
+                    img.save(img_save_location)
+                    continue
+
+                # finally write this to dictionary if it worked.
+                node_dict[item_dict["socket_id"]][a_node["id"]]={"name" : node_name, "mods" : a_node["mods"]}
+
+            save_path = os.path.join(OUTPUT_FOLDER, str(jewel_number),str(item_dict["socket_id"])+".json")
+            save_prefix = os.path.join(OUTPUT_FOLDER, str(jewel_number))
+            if not os.path.exists(save_prefix):
+                os.makedirs(save_prefix)
+            f=open(save_path, 'w')
+            json.dump(node_dict[item_dict["socket_id"]],f)
+            f.close()
+
+############################################
+
         pool.close()
         pool.join()
-        return item_name, item_desc, item_stats
+        return self.item_name, self.item_desc, item_stats
 
-    def _tree_to_screen(self, tree_coords):
-        self.log.debug("screen_coords: ({}, {})".format( self.camera_position[0], self.camera_position[1] ) )
-        screen_coords=(int(tree_coords[0]*t2s_scale),int(tree_coords[1]*t2s_scale))
-        cam_relative_coords=(screen_coords[0]-self.camera_position[0],
-                             screen_coords[1]-self.camera_position[1])
-        cam_absolute_coords=(int(self.resolution[0]/2)+cam_relative_coords[0],int(self.resolution[1]/2)+cam_relative_coords[1])
-        #don't return garbage coords. Maybe this is wrong?
-        if cam_absolute_coords[0]<0 or cam_absolute_coords[0]>self.resolution[0] or cam_absolute_coords[1]<0 or cam_absolute_coords[1]>self.resolution[1]:
-            self.log.info("Tried to get offscreen coords!")
-            return None
-        return cam_absolute_coords
-
-    def load_templates(self, threshold=128):
-        templates_and_masks = {}
-        for template_name in TEMPLATES.keys():
-            template_path = os.path.join(IMAGE_FOLDER, template_name)
-            img = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
-            size = TEMPLATES[template_name][self.resolution_prefix + "size"]
-            channels = cv2.split(img)
-            mask = None
-            if len(channels) > 3:
-                mask = np.array(channels[3])
-                mask[mask <= threshold] = 0
-                mask[mask > threshold] = 255
-                # mask = cv2.resize(mask, size)
-
-            img = cv2.imread(template_path, 0)
-            # img = cv2.resize(img, size)
-            templates_and_masks[template_name] = {"image": img, "mask": mask}
-        return templates_and_masks
 
     def _move_screen_to_node(self, node_id):
 
         self.log.debug("Moving to node %s" % node_id)
 
-        self._move_to_tree_pos_using_spaces(node_coords[node_id])
+        self._move_to_tree_pos_using_spaces(node_coords[str(node_id)])
 
         return True
 
-    def _move_to_tree_pos_using_spaces(self, tree_desired_pos, max_position_error=2):
 
-        target = (int(tree_desired_pos[0]*t2s_scale),int(tree_desired_pos[1]*t2s_scale))
-#we only check the x bound, since all nodes are in bounds in the y direction
-        if target[0]<TREE_BOUND_X[0]+50:
-            target= (TREE_BOUND_X[0]+50, target[1])
-        if target[0]>TREE_BOUND_X[1]-50:
-            target= (TREE_BOUND_X[1]-50, target[1])
+
+    def _move_to_tree_pos_using_spaces(self, tree_desired_pos, max_position_error=40):
+
+        target = (tree_desired_pos[0],tree_desired_pos[1])
+        #we only check the x bound, since all nodes are in bounds in the y direction
+        if target[0]<TREE_BOUND_X[0]+400:
+            target= (TREE_BOUND_X[0]+400, target[1])
+        if target[0]>TREE_BOUND_X[1]-400:
+            target= (TREE_BOUND_X[1]-400, target[1])
 
         dx = target[0] - self.camera_position[0]
         dy = target[1] - self.camera_position[1]
+        self.current_error=(0,0)
+
         while (abs(dx) + abs(dy)) > max_position_error:
             # Choose quadrant to find spaces in based on dx, dy
             right, bottom = dx >= 0, dy >= 0
@@ -206,7 +342,7 @@ class TreeNavigator:
             chosen_space = spaces
 
             # How far to drag the window to end up in the optimal place
-            screen_move_x, screen_move_y = [dx, dy]
+            screen_move_x, screen_move_y = [int(dx*self.t2s_scale), int(dy*self.t2s_scale)]
 
             # Calculate where our drag should end up to perform the move
             drag_x = int(chosen_space[0]) - screen_move_x
@@ -227,26 +363,28 @@ class TreeNavigator:
             # Calculate how far we've actually moved
             effective_move_x = chosen_space[0] - drag_x
             effective_move_y = chosen_space[1] - drag_y
+            #self.log.info("I think I've moved %d %d",effective_move_x,effective_move_y)
 
             # Update our internal tree position
-            self.camera_position = [self.camera_position[0]+effective_move_x, self.camera_position[1]+effective_move_y]
+            self.camera_position = [self.camera_position[0]+effective_move_x/self.t2s_scale, self.camera_position[1]+effective_move_y/self.t2s_scale]
 
             # Update how much we have left to move
             dx = target[0] - self.camera_position[0]
             dy = target[1] - self.camera_position[1]
 
+
     def _locate_screen(self, quadrent):
-        #Since the bounding box is nicely alligned for 1080, we use that if we go all the way one way, we get stuck
+        #move all the way to one direction, and therefore know where you are (default is 3: bottom right corner)
         self.log.info("Moving to corner %d" % quadrent)
         q_signs = {0: (1,-1), 1: (-1,-1) , 2: (-1,1) , 3: (1,1)}
         q_indicator = {0: (0,1), 1: (1,1) , 2: (1,0) , 3: (0,0)}
-        for repetition_counter in range(3):
+        for _ in range(3):
             # Find empty spaces that we can drag from
             spaces = self._find_empty_space(quadrent)
             if spaces is None:
                 raise ValueError("Could not find an empty space, quitting.")
 
-            # Choose the farthest empty space for maximum drag
+            # Choose an empty space?
             chosen_space = spaces
 
             # An arbitrary position in the opposite corner region
@@ -261,9 +399,10 @@ class TreeNavigator:
             self.input_handler.rnd_sleep(min=200, mean=300, sigma=100)
 
         # Having gotten all the way across the tree, we set our location to the bounded location
-        # to allign with the _center_ of nodes, rather than the top left corner, make it off by 5 pixels
+        # camera_position always refers to the position in _tree coordinates_ where the center of the screen is.
         self.camera_position=(TREE_BOUND_X[q_signs[quadrent][0]+q_indicator[quadrent][0]],
                               TREE_BOUND_Y[q_signs[quadrent][1]+q_indicator[quadrent][1]])
+
 
     def _find_empty_space(self, quadrant):
         # Finds empty spaces that can be used to drag the screen
@@ -310,38 +449,26 @@ class TreeNavigator:
         return saved_coords
 
 
-    def _click_socket(self, tree_socket_pos, offset, insert=True):
-        self.log.debug("Clicking socket")
-        xy = self._tree_to_screen(tree_socket_pos)
-        lt = [xy[0]+offset[0] - 1, xy[1]+offset[1] - 1]
-        rb = [xy[0]+offset[0] + 1, xy[1]+offset[1] + 1]
-        if insert:
-            self.input_handler.click(*lt, *rb, button="left", raw=True)
-        else:
-            self.input_handler.click(*lt, *rb, button="right", raw=True)
-        self.input_handler.rnd_sleep(min=200, mean=300)
-
 
     def _analyze_nodes(self, socket_id, repeated=False):
         self.log.info("Analyzing nodes for socket id %s" % socket_id)
-        node_ids = neighbor_nodes[socket_id]
-        tree_socket_pos=node_coords[socket_id]
+        node_ids = neighbor_nodes[str(socket_id)]
+        node_location=node_coords[str(socket_id)]
 
-#check the zone around where the socket is
-        thought_middle=self._tree_to_screen(tree_socket_pos)
-        lt=[thought_middle[0]-30,thought_middle[1]-30]
-        rb=[thought_middle[0]+30,thought_middle[1]+30]
+	#we should be close to the node, we take a screenshot around where we think the node is to get it exactly right, and update our camera position
+        thought_offset = [node_location[0] - self.camera_position[0], node_location[1] - self.camera_position[1]]
+        #convert this offset to pixels
+        screen_offset = [int(thought_offset[0]*self.t2s_scale), int(thought_offset[1]*self.t2s_scale)]
+        snapshot_radius = 30
+        #larger means less mistakes and slower searching
+        lt=[int(self.resolution[0]/2)+screen_offset[0]-snapshot_radius, int(self.resolution[1]/2)+screen_offset[1]-snapshot_radius]
+        rb=[int(self.resolution[0]/2)+screen_offset[0]+snapshot_radius, int(self.resolution[1]/2)+screen_offset[1]+snapshot_radius]
         searched_area = grab_screen(tuple(lt + rb))
         searched_area = cv2.cvtColor(searched_area, cv2.COLOR_BGR2GRAY)
-#match it to the saved image of that socket
-        locations = np.zeros_like(searched_area)
 
-        centered_coordinates=self._match_image(searched_area,str(socket_id)+".png")
-        locations[tuple(centered_coordinates)] = 1
-
-        rel_space_pos_yx = np.argwhere(locations == 1)
-        rel_space_pos = rel_space_pos_yx.T[::-1].T
-        if len(rel_space_pos) == 0:
+	#match it to the saved image of that socket, just to get offset
+        offset = self._find_socket_offset(searched_area,socket_id)
+        if len(offset) == 0:
             if repeated==True:
                 self.log.warning("Could not find the socket! Giving up.")
                 return []
@@ -349,35 +476,70 @@ class TreeNavigator:
             self._locate_screen(3)
             self._move_screen_to_node(socket_id)
             return self._analyze_nodes(socket_id,repeated=True)
-        first_rel_space_pos=rel_space_pos[0]
-        offset= (first_rel_space_pos[0]-30, first_rel_space_pos[1]-30)
-        self.log.info("offset: ({}, {})".format( offset[0], offset[1] ) )
 
+        #put in the jewel, scan all the nodes
+        self._click_socket(node_location,offset)
         nodes =[]
-        self._click_socket(tree_socket_pos,offset)
-
-#        new_path=str(socket_id)+'/'
-#        if not os.path.exists(os.path.join(IMAGE_FOLDER, new_path)):
-#            os.makedirs(os.path.join(IMAGE_FOLDER, new_path))
         for node_id in node_ids:
             if not self._run():
                 return
             node_stats = self._get_node_data(node_id,offset)
-#REMOVE LATER
-#            file_name=str(socket_id)+'/'+str(node_id)+'.png'
-#            save_path = os.path.join(IMAGE_FOLDER, file_name)
-#            img= Image.fromarray(node_stats)
-#            img.save(save_path)
-#REMOVE
-            #self.log.info("node: %s" % node_id)
             node = {
                 "id": node_id,
-                "stats": node_stats,
+                "img": node_stats,
             }
             nodes.append(node)
-        self._click_socket(tree_socket_pos,offset, insert=False)
+        self._click_socket(node_location,offset, insert=False)
+
+        #fix  the camera position to account for the actual offset
+        self.camera_position[0] -= offset[0]/self.t2s_scale
+        self.camera_position[1] -= offset[1]/self.t2s_scale
         return nodes
 
+
+    def _click_socket(self, node_location, offset, insert=True):
+        self.log.debug("Clicking socket")
+        thought_offset = [node_location[0] - self.camera_position[0], node_location[1] - self.camera_position[1]]
+        xy = [int(thought_offset[0]*self.t2s_scale), int(thought_offset[1]*self.t2s_scale)]
+        lt = [int(self.resolution[0]/2)+xy[0]+offset[0] - 1, int(self.resolution[1]/2)+xy[1]+offset[1] - 1]
+        rb = [int(self.resolution[0]/2)+xy[0]+offset[0] + 1, int(self.resolution[1]/2)+xy[1]+offset[1] + 1]
+        if insert:
+            self.input_handler.click(*lt, *rb, button="left", raw=True)
+        else:
+            self.input_handler.click(*lt, *rb, button="right", raw=True)
+        self.input_handler.rnd_sleep(min=200, mean=300)
+
+    def _find_socket_offset(self, screen, node_id):
+        #look up the filter and the target for the node id
+        socket_type=SOCKET_TYPE_DICT[node_id]
+        template_name=self.resolution_prefix+socket_type+"_target.png"
+        template = self.templates_and_masks[template_name]["image"]
+        mask = self.templates_and_masks[template_name]["mask"]
+        bw = cv2.inRange(screen, 150, 255)
+        res = cv2.matchTemplate(bw, template, cv2.TM_CCORR_NORMED, mask=mask)
+        local_shift_array = np.argwhere(np.logical_and(res <1.01,res>0.95))
+        if len(local_shift_array)==0:
+            return []
+        local_shift=local_shift_array[0]
+
+        #adjust for size of screenshot and template
+        size = TEMPLATES[template_name][self.resolution_prefix+"size"]
+        snap_size = screen.shape
+        center=[int(snap_size[0]/2),int(snap_size[1]/2)]
+        half_size = [int(size[0]/2),int(size[1]/2)]
+
+        #local shift was transposed, so the order is wrong
+        offset=[local_shift[1]+half_size[0]-center[0],local_shift[0]+half_size[1]-center[1]]
+        return offset
+
+    def _contains_11(self, img):
+        template_name = self.resolution_prefix + "11_target.png"
+        template = self.templates_and_masks[template_name]["image"]
+        mask = self.templates_and_masks[template_name]["mask"]
+        bgr = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        res = cv2.matchTemplate(bgr, template, cv2.TM_CCORR_NORMED, mask=mask)
+        cleaned_res = cv2.inRange(res, 0.98, 1.01)
+        return (cleaned_res.sum() > 0.9)
 
     def _match_image(self, screen, template_name):
         template = self.templates_and_masks[template_name]["image"]
@@ -402,8 +564,8 @@ class TreeNavigator:
 
     def _get_node_data(self, node_id,offset):
         self.log.debug("Getting node stats for node %s" % node_id)
-        location = self._tree_to_screen(node_coords[node_id])
-        location=(int(location[0])+offset[0],int(location[1])+offset[1])
+        thought_offset = [node_coords[str(node_id)][0] - self.camera_position[0], node_coords[str(node_id)][1] - self.camera_position[1]]
+        location = [int(self.resolution[0]/2)+int(thought_offset[0]*self.t2s_scale)+offset[0], int(self.resolution[1]/2)+int(thought_offset[1]*self.t2s_scale)+offset[1]]
         lt = [
             location[0] - 1,
             location[1] - 1,
@@ -423,59 +585,90 @@ class TreeNavigator:
         textbox_rb = [textbox_lt[0] + int(TXT_BOX["w"]),
                       textbox_lt[1] + int(TXT_BOX["h"]),
         ]
+        # adjust the screengrab if it were to run off the screen
+        rb_diff=[min([self.resolution[0]-textbox_rb[0],0]),min([self.resolution[1]-textbox_rb[1],0])]
+        textbox_lt = [textbox_lt[0]+rb_diff[0],textbox_lt[1]+rb_diff[1]]
+        textbox_rb = [textbox_rb[0]+rb_diff[0],textbox_rb[1]+rb_diff[1]]
 
         jewel_area_bgr = grab_screen(tuple(np.concatenate([textbox_lt, textbox_rb])))
+        bgr = cv2.cvtColor(jewel_area_bgr, cv2.COLOR_BGRA2BGR)
+### double check that we _actually_ got the node
+### look for the exact mod color: 135, 135, 254
+### the screengrab is bgr though, so look for 254, 135, 135
+### need at least 400 to have a good mod
+        pix_count = (bgr == (254,135,135)).sum()
+        if pix_count < 400:
+            print("Didn't find the node!!!", node_id, "scanning to try and find it.")
+            self.log.debug("Failed to find node %s" % node_id)
+            # try again, this time scan a 5x5 pixel area until you find it.
+            for dx,dy in [(x,y) for x in range(5) for y in range(5)]:
+                lt = [
+                    location[0] - 2 + dx,
+                    location[1] - 2 + dy,
+                ]
+                rb = [
+                    location[0] - 2 + dx,
+                    location[1] - 2 + dy,
+                ]
+                self.input_handler.click(
+                    *lt,
+                    *rb,
+                    button=None,
+                    raw=True,
+                    speed_factor=self.config["node_search_speed_factor"]
+                )
+
+                jewel_area_bgr = grab_screen(tuple(np.concatenate([textbox_lt, textbox_rb])))
+                bgr = cv2.cvtColor(jewel_area_bgr, cv2.COLOR_BGRA2BGR)
+                pix_count = (bgr == (254,135,135)).sum()
+                if pix_count > 400:
+                    print("found it with offset", dx, dy)
+                    break
+                    
+
         return jewel_area_bgr
+
+
+###the input to below in "nodes_lines"
+###pool.map_async(OCR.node_to_strings, socket_nodes):
+###        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
 
     def _filter_ocr_lines(self, nodes_lines, max_dist=4):
         filtered_nodes = []
         for node in nodes_lines:
+            node_id = node["id"]
+            node_type = node_types[str(node_id)]
             names = []
+            for line in node["name"]:
+                filtered_name = self._filter_nonalpha(line)
+                #filtered_name = line
+                if len(filtered_name)<4:
+                    continue
+                if filtered_name in self.modNames[node_type]:
+                    names.append(filtered_name)
+            if len(names)!=1:
+                #found the wrong number of names, store the image and give up on processing
+                filtered_nodes.append(
+                    {"id": node["id"], "name": [], "mods": [], "img": node["img"]}
+                )
+                #print(node["name"],node["stats"])
+                continue
+            name = names[0]
+
             mods = []
+            bad_mods = []
             for line in node["stats"]:
                 filtered_line = self._filter_nonalpha(line)
+                #filtered_line = line
                 if len(filtered_line) < 4 or filtered_line == "Unallocated":
                     continue
-                if filtered_line in self.passive_names:
-                    names.append(self.passive_names[filtered_line])
-                elif filtered_line in self.passive_mods:
-                    filtered_mod, value = filter_mod(line, regex=self.nonalpha_re)
-                    new_mod = re.sub(
-                        self.find_mod_value_re,
-                        str(value),
-                        self.passive_mods[filtered_line],
-                        count=1,
-                    )
-                    mods.append(new_mod)
+                if filtered_line in self.passivesModsData[self.item_name][node_type][name]:
+                    mods.append(filtered_line)
                 else:
-                    # Sometimes the OCR might return strange results. If so,
-                    # as a last resort, check levenshtein distance to closest
-                    # node. This shouldn't happen often.
-                    best_distance = 99999999999
-                    best_match = None
-                    for possible_mod in self.passive_nodes:
-                        d = distance(filtered_line, possible_mod)
-                        if d < best_distance:
-                            best_distance = d
-                            best_match = possible_mod
-                    if best_distance > max_dist:
-                        continue
-                    if best_match in self.passive_names:
-                        names.append(self.passive_names[best_match])
-                    elif best_match in self.passive_mods:
-                        filtered_mod, value = filter_mod(line, regex=self.nonalpha_re)
-                        new_mod = re.sub(
-                            self.find_mod_value_re,
-                            str(value),
-                            self.passive_mods[best_match],
-                            count=1,
-                        )
-                        mods.append(new_mod)
-
-            if mods:
-                filtered_nodes.append(
-                    {"id": node["id"], "name": names, "mods": mods}
-                )
+                    bad_mods.append(filtered_line)
+            filtered_nodes.append(
+                {"id": node["id"], "name": names, "mods": mods, "bad_mods" : bad_mods, "img": node["img"]}
+            )
 
         return filtered_nodes
 
@@ -491,8 +684,8 @@ class TreeNavigator:
             item = self.input_handler.inventory_copy(
                 *item_location, OWN_INVENTORY_ORIGIN, speed_factor=2
             )
-            item_desc = item.split("\n")[9].strip()
-            item_name = item.split("\n")[1].strip()
+            item_desc = item.split("\n")[10].strip()
+            item_name = item.split("\n")[2].strip()
         self.input_handler.rnd_sleep(min=150, mean=200, sigma=100)
         self.input_handler.inventory_click(*item_location, OWN_INVENTORY_ORIGIN)
         self.input_handler.rnd_sleep(min=150, mean=200, sigma=100)
@@ -500,69 +693,129 @@ class TreeNavigator:
         self.input_handler.rnd_sleep(min=150, mean=200, sigma=100)
         return item_name, item_desc
 
-    def generate_good_strings(self, files):
-        mods = {}
-        names = {}
-        for name in files:
-            path = files[name]
-            with open(path) as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    names.update({self._filter_nonalpha(k): k for k in data.keys()})
-                    for key in data.keys():
-                        if isinstance(data[key]["passives"][0], list):
-                            mods.update(
-                                {
-                                    self._filter_nonalpha(e): e
-                                    for e in data[key]["passives"][0]
-                                }
-                            )
-                        else:
-                            mods.update(
-                                {
-                                    self._filter_nonalpha(e): e
-                                    for e in data[key]["passives"]
-                                }
-                            )
-                else:
-                    mods.update({self._filter_nonalpha(e): e for e in data})
-        mods.pop("", None)
-        return mods, names
+    def load_templates(self, threshold=128):
+        templates_and_masks = {}
+        for template_name in ["FreeSpace.png"]:
+            template_path = os.path.join(IMAGE_FOLDER, template_name)
+            img = cv2.imread(template_path, cv2.IMREAD_UNCHANGED)
+            size = TEMPLATES[template_name][self.resolution_prefix + "size"]
+            channels = cv2.split(img)
+            mask = None
+            if len(channels) > 3:
+                mask = np.array(channels[3])
+                mask[mask <= threshold] = 0
+                mask[mask > threshold] = 255
+                # mask = cv2.resize(mask, size)
+
+            img = cv2.imread(template_path, 0)
+            # img = cv2.resize(img, size)
+            templates_and_masks[template_name] = {"image": img, "mask": mask}
+        for type in ["cluster","normal"]:
+            target_name = self.resolution_prefix + type + "_target.png"
+            mask_name = self.resolution_prefix + type + "_filter.png"
+            target_path = os.path.join(IMAGE_FOLDER, target_name)
+            mask_path = os.path.join(IMAGE_FOLDER, mask_name)
+            img = cv2.imread(target_path, 0)
+            mask = cv2.imread(mask_path, 0)
+            templates_and_masks[target_name] = {"image": img, "mask": mask}
+
+        target_name = self.resolution_prefix + "11_target.png"
+        mask_name = self.resolution_prefix + "11_filter.png"
+        target_path = os.path.join(IMAGE_FOLDER, target_name)
+        mask_path = os.path.join(IMAGE_FOLDER, mask_name)
+        img = cv2.imread(target_path, 1)
+        mask = cv2.imread(mask_path, 0)
+        templates_and_masks[target_name] = {"image": img, "mask": mask}
+            
+        return templates_and_masks
 
     def _filter_nonalpha(self, value):
-        return re.sub(self.nonalpha_re, "", value)
+        small_filter = re.sub(self.modChars, "", value)
+        if len(small_filter)==0:
+            return small_filter
+        while small_filter[-1]==' ':
+            small_filter=small_filter[:-1]
+            if len(small_filter)==0:
+                return small_filter
+        return small_filter
 
 
 # Adapted from https://github.com/klayveR/python-poe-timeless-jewel
 class OCR:
     @staticmethod
+    def node_to_strings(node):
+        img = node["img"]
+        name_filt, mod_filt = OCR.getFilteredImage(img)
+        name_text = OCR.imageToStringArray(name_filt)
+        mod_text = OCR.imageToStringArray(mod_filt)
+        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
+
+    @staticmethod
+    def node_to_strings2(node):
+        img = node["img"]
+        name_filt, mod_filt = OCR.getFilteredImage(img,True)
+        name_text = OCR.imageToStringArray(name_filt)
+        mod_text = OCR.imageToStringArray(mod_filt)
+        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
+
+    @staticmethod
+    def getFilteredImage(src,second_try=False):
+
+        srcH, srcW = src.shape[:2]
+#        src = cv2.resize(src, (int(srcW * 2), int(srcH * 2)))
+        # HSV to find the text
+        rgb = cv2.cvtColor(src, cv2.COLOR_BGRA2BGR)
+        hsv = cv2.cvtColor(rgb.copy(), cv2.COLOR_BGR2HSV)
+        # the text is very specific colors, so pick those colors.
+        # some sorcery to try and reduce the failures. The first try be very strict about what is included
+        # the second try, include more junk, but filter the dust.
+        # mask1 for blue affix text
+        lower_blue = np.array([119, 100, 40])
+        if second_try:
+            upper_blue = np.array([126, 140, 255])
+        else:
+            upper_blue = np.array([121, 140, 255])
+        # mask2 for yellow passive node name
+        lower_yellow = np.array([16, 45, 130])
+        upper_yellow = np.array([20, 55, 255])
+        dark_mod = cv2.inRange(hsv, lower_blue, upper_blue)
+        dark_name = cv2.inRange(hsv, lower_yellow, upper_yellow)
+        mod = cv2.bitwise_not(dark_mod)
+        name = cv2.bitwise_not(dark_name)
+#because we're very close, we're going to clean up the visual "dirt"
+#put a 5x5 box around any black pixel. If the sum of black pixels in this region is 4 or less, fill the box with white
+        if second_try:
+            for i in range(2,srcH-2):
+                for j in range(2,srcW-2):
+                    if mod[i,j] == 0:
+                        zeros=0
+                        for dx in range(5):
+                            for dy in range(5):
+                                if mod[i-2+dx,j-2+dy] == 0:
+                                    zeros+=1
+                        if zeros<5: 
+                            for dx in range(5):
+                                for dy in range(5):
+                                    mod[i-2+dx,j-2+dy] = 255
+                    if name[i,j] == 0:
+                        zeros=0
+                        for dx in range(5):
+                            for dy in range(5):
+                                if name[i-2+dx,j-2+dy] == 0:
+                                    zeros+=1
+                        if zeros<5: 
+                            for dx in range(5):
+                                for dy in range(5):
+                                    name[i-2+dx,j-2+dy] = 255
+            name = cv2.resize(name, (int(srcW * 2), int(srcH * 2)))
+            mod = cv2.resize(mod, (int(srcW * 2), int(srcH * 2)))
+        return name, mod
+
+    @staticmethod
     def clahe(img, clip_limit=2.0, grid_size=(8, 8)):
         clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=grid_size)
         return clahe.apply(img)
 
-    @staticmethod
-    def getFilteredImage(src):
-        srcH, srcW = src.shape[:2] 
-        src = cv2.resize(src, (int(srcW * 2), int(srcH * 2)))
-
-        # HSV thresholding to get rid of as much background as possible
-        src = cv2.cvtColor(src, cv2.COLOR_BGRA2BGR)
-        hsv = cv2.cvtColor(src.copy(), cv2.COLOR_BGR2HSV)
-        # Define 2 masks and combine them
-        # mask1 for blue affix text
-        # mask2 for yellow passive node name
-        lower_blue = np.array([80, 10, 40])
-        upper_blue = np.array([130, 180, 255])
-        lower_yellow = np.array([10, 10, 190])
-        upper_yellow = np.array([30, 200, 255])
-        mask1 = cv2.inRange(hsv, lower_blue, upper_blue)
-        mask2 = cv2.inRange(hsv, lower_yellow, upper_yellow)
-        mask = cv2.bitwise_or(mask1, mask2)
-        result = cv2.bitwise_and(src, src, mask=mask)
-        b, g, r = cv2.split(result)
-        b = OCR.clahe(b, 5, (5, 5))
-        inverse = cv2.bitwise_not(b)
-        return inverse
 
     @staticmethod
     def imageToStringArray(img):
@@ -570,10 +823,3 @@ class OCR:
         t = t.replace("\n\n", "\n")
         lines = t.split("\n")
         return lines
-
-    @staticmethod
-    def node_to_strings(node):
-        img = node["stats"]
-        filt_img = OCR.getFilteredImage(img)
-        text = OCR.imageToStringArray(filt_img)
-        return {"id": node["id"], "stats": text}
