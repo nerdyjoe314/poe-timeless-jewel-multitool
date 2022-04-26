@@ -4,7 +4,24 @@ import json
 ### Constants and stuff
 #distances for node clusters
 orbit_radius=[0, 82, 162, 335, 493, 662, 846]
-skills_per_orbit=[1,6,12,12,40,72,72]
+skills_per_orbit=[1,6,16,16,40,72,72]
+
+angles=[]
+for i in range(len(skills_per_orbit)):
+	spo=skills_per_orbit[i]
+	if spo==16:
+		angles.append(
+		[0, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330]
+		)
+	elif spo==40:
+		angles.append(
+		[0, 10, 20, 30, 40, 45, 50, 60, 70, 80, 90, 100, 110, 120, 130, 135, 140, 150, 160, 170, 180, 190, 200, 210, 220, 225, 230, 240, 250, 260, 270, 280, 290, 300, 310, 315, 320, 330, 340, 350]
+		)
+	else:
+		angles.append(
+		[360*i/spo for i in range(spo)]
+		)
+
 
 # aoe of timeless jewels
 #jewel_radius=1800 #just a guess, but it's below 1807 and above 1796
@@ -168,14 +185,12 @@ for n in node_list:
 	y_val=0
 	x_val+=group_coords[n[1]][0]
 	y_val+=group_coords[n[1]][1]
-	x_shift=math.sin(math.radians(360*n[3]/skills_per_orbit[n[2]]))
-	y_shift=-math.cos(math.radians(360*n[3]/skills_per_orbit[n[2]]))
+	x_shift=math.sin(math.radians(angles[n[2]][n[3]]))
+	y_shift=-math.cos(math.radians(angles[n[2]][n[3]]))
 	x_val+=orbit_radius[n[2]]*x_shift
 	y_val+=orbit_radius[n[2]]*y_shift
 	#transformation for fully zoomed out 1920x1080
-	x_val=x_val*res_scale+2500
-	y_val=y_val*res_scale+2500
-	d.text((x_val,y_val),str(n[0]),fill=(255,255,255))
+	d.text((x_val*res_scale+2500,y_val*res_scale+2500),str(n[0]),fill=(255,255,255))
 	#d.ellipse((x_val-2,y_val-2,x_val+2,y_val+2),fill=(255,255,255))
 	node_coords[n[0]]=(x_val,y_val)
 img.save("passive_picture.png")
