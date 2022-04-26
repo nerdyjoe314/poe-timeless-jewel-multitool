@@ -11,7 +11,7 @@ The application is able to analyze timeless jewels. This is done by, for every j
 A single jewel analysis consisting of analyzing 21 socket instances, around 1500 nodes and many thousands of mods takes around 300 seconds, though this will vary.
 
 NOTICE: Although this tool is benevolent in the manner that it does not help you kill monsters or make you richer directly in any way, performing timed actions and automated mouse movements does violate Path of Exile's terms and is bannable. 
-To comply with GGG's policy of one user input per server command, each jewel insertion and deletion should be done with user input. The mouse movements don't directly cause server calls (I THINK!).
+To comply with GGG's policy of one user input per server command, each jewel insertion and deletion should be done with user input, however THIS TOOL DOES NOT COMPLY with that policy. The mouse movements don't directly cause server calls (I THINK!).
 
 ### Requirements
 - Python 3.x (tested with 3.7)
