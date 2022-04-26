@@ -1,7 +1,7 @@
 bot:
     db_url: 'mongodb://localhost:27017/'
     db_name: 'project_timeless'
-    # Resolution supports either '2560x1440' or '1920x1080'
+    # Resolution supports '1920x1080'
     resolution: '1920x1080'
     # breaks_per_full_inventory specifies how many ~5 min breaks to take per
     # full inventory of jewels

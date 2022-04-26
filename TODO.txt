@@ -1,0 +1,5 @@
+Things to do:
+create a tool to "patch" the outputed json with human-powered ocr
+soup up "of the vaal" mod lists to account for triple (or QUADRUPLE?!?) mods
+add features for non-glorious vanity jewels
+set up config for unlocked jewel sockets
