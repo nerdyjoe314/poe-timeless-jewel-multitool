@@ -24,10 +24,7 @@ for i in range(len(skills_per_orbit)):
 
 
 # aoe of timeless jewels
-#jewel_radius=1800 #just a guess, but it's below 1807 and above 1796
-jewel_radius=388.1 # updated due to new stuff. Also a guess.
-#converted 1800 would become 388.8
-#actual updated radius is between 388.07442290319153 and 388.1335176382114
+jewel_radius=1800 #just a guess, but it's below 1803 and above 1796
 
 # scale for 1080 resolution
 res_scale=1.08/10*2
