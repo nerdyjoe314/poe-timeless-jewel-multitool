@@ -94,7 +94,18 @@ TEMPLATES = {
 }
 
 # Defines the position of the text box which is cropped out and OCR'd per node
-TXT_BOX = {"x": 32, "y": 0, "w": 900, "h": 320}
+TXT_BOX = {"1080p_" : {"x": 32, "y": 0, "w": 900, "h": 320},
+"1440p_" : {"x": 40, "y": 0, "w": 1130, "h": 400}}
+
+
+class NodeData:
+    id = 0
+    name = []
+    mods = []
+    name_text = []
+    mod_text = []
+    img = np.array([0])
+    
 
 class TreeNavigator:
     def __init__(self, resolution, halt_value):
@@ -124,6 +135,14 @@ class TreeNavigator:
     def eval_jewel(self, item_location):
 
         self.item_name, self.item_desc = self._setup(item_location, copy=True)
+
+        # Find the jewel number
+        desc_words=self.item_desc.split(" ")
+        jewel_number=0
+        for word in desc_words:
+            if not word.isalpha():
+                jewel_number=int(word)
+
         pool = Pool(self.config["ocr_threads"])
         jobs = {}
         
@@ -156,66 +175,23 @@ class TreeNavigator:
         ]
         jobs2 = {}
 
-        # Find the jewel number
-        desc_words=self.item_desc.split(" ")
-        jewel_number=0
-        for word in desc_words:
-            if not word.isalpha():
-                jewel_number=int(word)
-
         node_dict={}
         # first pass at interpreting the ocr
         for item_dict in item_stats:
             rerun_nodes=[]
             node_dict[item_dict["socket_id"]]={}
-            save_path = os.path.join(OUTPUT_FOLDER, str(jewel_number),str(item_dict["socket_id"])+".json")
-            save_prefix = os.path.join(OUTPUT_FOLDER, str(jewel_number))
-            if not os.path.exists(save_prefix):
-                os.makedirs(save_prefix)
-            all_nodes=self._filter_ocr_lines(item_dict["socket_nodes"])
-            
+            self._filter_ocr_lines(item_dict["socket_nodes"])
 
-            ### a_node structure:         {"id": node["id"], "name": names, "mods": mods, "bad_mods": bad_mods, "img": node["img"]}
-            for a_node in all_nodes:
-                #if we're missing the name, add the node to those we want to rerun
-                if len(a_node["name"]) == 0:
+            for a_node in item_dict["socket_nodes"]:
+                #if we're missing the name, add the node to those we want to rerun and stop doing anything else
+                if len(a_node.name) == 0 or len(a_node.mods) == 0:
                     rerun_nodes.append(a_node)
                     continue
-
-                node_name=a_node["name"][0]
-                #if we have a name and a single bad mod, try and fix the 11%
-                if (len(a_node["mods"]) == 0 and len(a_node["bad_mods"]) == 1) or (node_types[str(a_node["id"])] == "notable" and len(a_node["bad_mods"]) == 1):
-                    if self._contains_11(a_node["img"]):
-                        new_mod=a_node["bad_mods"][0]
-                        if "1%" in new_mod:
-                            insert_location = new_mod.find("1%")
-                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
-                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                                a_node["mods"].append(new_mod)
-                                a_node["bad_mods"].pop()
-
-                        elif "n%" in new_mod:
-                            insert_location = new_mod.find("n%")
-                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
-                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                                a_node["mods"].append(new_mod)
-                                a_node["bad_mods"].pop()
-
-                #for every bad mod, try removing the first two or last two characters. sometimes there's dangling trash '12% increased Damage over Time .'
-                for bad_mod in a_node["bad_mods"]:
-                    if bad_mod[2:] in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                        a_node["mods"].append(bad_mod[2:])
-                    if bad_mod[:-2] in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                        a_node["mods"].append(bad_mod[:-2])
-
-                if len(a_node["mods"]) == 0:
-                    rerun_nodes.append(a_node)
-                    continue
-                if node_types[str(a_node["id"])] == "notable" and len(a_node["mods"]) == 1:
+                if node_types[str(a_node.id)] == "notable" and len(a_node.mods) == 1:
                     rerun_nodes.append(a_node)
                     continue
                 # otherwise, add the node to the dictionary
-                node_dict[item_dict["socket_id"]][a_node["id"]]={"name" : a_node["name"][0], "mods" : a_node["mods"]}
+                node_dict[item_dict["socket_id"]][a_node.id]={"name" : a_node.name[0], "mods" : a_node.mods}
             jobs2[item_dict["socket_id"]] = pool.map_async(OCR.node_to_strings2, rerun_nodes)
 
         second_item_stats = [
@@ -226,67 +202,38 @@ class TreeNavigator:
             for socket_id in jobs2
         ]
 
-
         # second pass at interpreting the ocr, only the previous failures come through here
         for item_dict in second_item_stats:
-            all_nodes=self._filter_ocr_lines(item_dict["socket_nodes"])
-
-            ### a_node structure:         {"id": node["id"], "name": names, "mods": mods, "bad_mods": bad_mods, "img": node["img"]}
-            for a_node in all_nodes:
-                # if we didn't even find a name, we give up and save the image
-                if len(a_node["name"]) == 0:
-                    img= Image.fromarray(a_node["img"])
-                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
-                    img.save(img_save_location)
-                    continue
-                node_name=a_node["name"][0]
-
-                # if we have a name, and only one bad mod, we will try to find '11' in the saved image.
-
-#we then need to identify what the bad mod is, and put an 11% in it.
-#typically the % makes it through ocr, so look for the %
-#then look forward until a space (or beginning of string)
-#replace that section with 11.
-#but actually, do this later.
-#search for the typical offenders: 1% and n%
-
-                if (len(a_node["mods"]) == 0 and len(a_node["bad_mods"]) == 1) or (node_types[str(a_node["id"])] == "notable" and len(a_node["bad_mods"]) == 1):
-                    if self._contains_11(a_node["img"]):
-                        new_mod=a_node["bad_mods"][0]
-                        if "1%" in new_mod:
-                            insert_location = new_mod.find("1%")
-                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
-                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                                a_node["mods"].append(new_mod)
-
-                        elif "n%" in new_mod:
-                            insert_location = new_mod.find("n%")
-                            new_mod=new_mod[:insert_location]+"11%"+new_mod[insert_location+2:]
-                            if new_mod in self.passivesModsData[ self.item_name ][ node_types[str(a_node["id"])] ][ node_name ]:
-                                a_node["mods"].append(new_mod)
-
-                # if we still have no mods, save the image and be done processing
-                if len(a_node["mods"]) == 0:
-                    img= Image.fromarray(a_node["img"])
-                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
-                    img.save(img_save_location)
-                    continue
-
-
-                # if we are a notable with only one mod, save the image and be done processing
-                if node_types[str(a_node["id"])] == "notable" and len(a_node["mods"]) == 1:
-                    img= Image.fromarray(a_node["img"])
-                    img_save_location = os.path.join(save_prefix, str(a_node["id"])+".png")
-                    img.save(img_save_location)
-                    continue
-
-                # finally write this to dictionary if it worked.
-                node_dict[item_dict["socket_id"]][a_node["id"]]={"name" : node_name, "mods" : a_node["mods"]}
-
+            self._filter_ocr_lines(item_dict["socket_nodes"])
             save_path = os.path.join(OUTPUT_FOLDER, str(jewel_number),str(item_dict["socket_id"])+".json")
             save_prefix = os.path.join(OUTPUT_FOLDER, str(jewel_number))
             if not os.path.exists(save_prefix):
                 os.makedirs(save_prefix)
+
+            for a_node in item_dict["socket_nodes"]:
+                img_save_location = os.path.join(save_prefix, str(item_dict["socket_id"]) +"_"+ str(a_node.id)+".png")
+                # if we didn't even find a name or mod, we give up and save the image
+                if len(a_node.name) == 0 or len(a_node.mods) == 0:
+                    img= Image.fromarray(a_node.img)
+                    img.save(img_save_location)
+                    print("failed to save. name:", a_node.name_text)
+                    print("mods:", a_node.mod_text)
+                    continue
+
+                # if we are a notable with only one mod, save the image and be done processing
+                if node_types[str(a_node.id)] == "notable" and len(a_node.mods) == 1:
+                    img= Image.fromarray(a_node.img)
+                    img.save(img_save_location)
+                    print("failed to save notable. name:", a_node.name_text)
+                    print("mods:", a_node.mod_text)
+                    continue
+
+                # finally write this to dictionary if it worked.
+                node_dict[item_dict["socket_id"]][a_node.id]={"name" : a_node.name[0], "mods" : a_node.mods}
+
+            if not os.path.exists(save_prefix):
+                os.makedirs(save_prefix)
+
             f=open(save_path, 'w')
             json.dump(node_dict[item_dict["socket_id"]],f)
             f.close()
@@ -484,10 +431,11 @@ class TreeNavigator:
             if not self._run():
                 return
             node_stats = self._get_node_data(node_id,offset)
-            node = {
-                "id": node_id,
-                "img": node_stats,
-            }
+
+            node = NodeData()
+            node.id=node_id
+            node.img=node_stats
+
             nodes.append(node)
         self._click_socket(node_location,offset, insert=False)
 
@@ -581,9 +529,9 @@ class TreeNavigator:
             raw=True,
             speed_factor=self.config["node_search_speed_factor"]
         )
-        textbox_lt = [location[0] + TXT_BOX["x"], location[1] + TXT_BOX["y"]]
-        textbox_rb = [textbox_lt[0] + int(TXT_BOX["w"]),
-                      textbox_lt[1] + int(TXT_BOX["h"]),
+        textbox_lt = [location[0] + TXT_BOX[self.resolution_prefix]["x"], location[1] + TXT_BOX[self.resolution_prefix]["y"]]
+        textbox_rb = [textbox_lt[0] + int(TXT_BOX[self.resolution_prefix]["w"]),
+                      textbox_lt[1] + int(TXT_BOX[self.resolution_prefix]["h"]),
         ]
         # adjust the screengrab if it were to run off the screen
         rb_diff=[min([self.resolution[0]-textbox_rb[0],0]),min([self.resolution[1]-textbox_rb[1],0])]
@@ -631,46 +579,55 @@ class TreeNavigator:
 
 ###the input to below in "nodes_lines"
 ###pool.map_async(OCR.node_to_strings, socket_nodes):
-###        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
+###        return {"id": node["id"], "name" : [], "mods": [], "name_text": name_text, "mod_text": mod_text, "img": img}
 
-    def _filter_ocr_lines(self, nodes_lines, max_dist=4):
-        filtered_nodes = []
+
+
+    def _filter_ocr_lines(self, nodes_lines):
         for node in nodes_lines:
-            node_id = node["id"]
-            node_type = node_types[str(node_id)]
-            names = []
-            for line in node["name"]:
+            node_type = node_types[str(node.id)]
+            node.name=[]
+            node.mods=[]
+            for line in node.name_text:
                 filtered_name = self._filter_nonalpha(line)
-                #filtered_name = line
                 if len(filtered_name)<4:
                     continue
+                #print(filtered_name)
                 if filtered_name in self.modNames[node_type]:
-                    names.append(filtered_name)
-            if len(names)!=1:
-                #found the wrong number of names, store the image and give up on processing
-                filtered_nodes.append(
-                    {"id": node["id"], "name": [], "mods": [], "img": node["img"]}
-                )
-                #print(node["name"],node["stats"])
-                continue
-            name = names[0]
+                    node.name.append(filtered_name)
+                if filtered_name[2:] in self.modNames[node_type]:
+                    node.name.append(filtered_name[2:])
+                if filtered_name[:-2] in self.modNames[node_type]:
+                    node.name.append(filtered_name[:-2])
 
-            mods = []
-            bad_mods = []
-            for line in node["stats"]:
+            if len(node.name)!=1:
+                #found the wrong number of names, give up on processing
+                node.name=[]
+                continue
+
+            for line in node.mod_text:
                 filtered_line = self._filter_nonalpha(line)
-                #filtered_line = line
                 if len(filtered_line) < 4 or filtered_line == "Unallocated":
                     continue
-                if filtered_line in self.passivesModsData[self.item_name][node_type][name]:
-                    mods.append(filtered_line)
+                if filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                    node.mods.append(filtered_line)
+                elif filtered_line[2:] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                    node.mods.append(filtered_line[2:])
+                elif filtered_line[:-2] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                    node.mods.append(filtered_line[:-2])
                 else:
-                    bad_mods.append(filtered_line)
-            filtered_nodes.append(
-                {"id": node["id"], "name": names, "mods": mods, "bad_mods" : bad_mods, "img": node["img"]}
-            )
+                    if self._contains_11(node.img):
+                        if "1%" in filtered_line:
+                            insert_location = filtered_line.find("1%")
+                            fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
+                            if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                                node.mods.append(fixed_filtered_line)
+                        elif "n%" in filtered_line:
+                            insert_location = filtered_line.find("n%")
+                            fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
+                            if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                                node.mods.append(fixed_filtered_line)
 
-        return filtered_nodes
 
 
     def _setup(self, item_location, copy=False):
@@ -744,25 +701,22 @@ class TreeNavigator:
 class OCR:
     @staticmethod
     def node_to_strings(node):
-        img = node["img"]
-        name_filt, mod_filt = OCR.getFilteredImage(img)
-        name_text = OCR.imageToStringArray(name_filt)
-        mod_text = OCR.imageToStringArray(mod_filt)
-        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
+        name_filt, mod_filt = OCR.getFilteredImage(node.img)
+        node.name_text = OCR.imageToStringArray(name_filt)
+        node.mod_text = OCR.imageToStringArray(mod_filt)
+        return node
 
     @staticmethod
     def node_to_strings2(node):
-        img = node["img"]
-        name_filt, mod_filt = OCR.getFilteredImage(img,True)
-        name_text = OCR.imageToStringArray(name_filt)
-        mod_text = OCR.imageToStringArray(mod_filt)
-        return {"id": node["id"], "name": name_text, "stats": mod_text, "img": img}
+        name_filt, mod_filt = OCR.getFilteredImage(node.img,True)
+        node.name_text = OCR.imageToStringArray(name_filt)
+        node.mod_text = OCR.imageToStringArray(mod_filt)
+        return node
 
     @staticmethod
     def getFilteredImage(src,second_try=False):
 
         srcH, srcW = src.shape[:2]
-#        src = cv2.resize(src, (int(srcW * 2), int(srcH * 2)))
         # HSV to find the text
         rgb = cv2.cvtColor(src, cv2.COLOR_BGRA2BGR)
         hsv = cv2.cvtColor(rgb.copy(), cv2.COLOR_BGR2HSV)
@@ -810,12 +764,6 @@ class OCR:
             name = cv2.resize(name, (int(srcW * 2), int(srcH * 2)))
             mod = cv2.resize(mod, (int(srcW * 2), int(srcH * 2)))
         return name, mod
-
-    @staticmethod
-    def clahe(img, clip_limit=2.0, grid_size=(8, 8)):
-        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=grid_size)
-        return clahe.apply(img)
-
 
     @staticmethod
     def imageToStringArray(img):
