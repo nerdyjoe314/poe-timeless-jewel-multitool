@@ -96,15 +96,16 @@ class GlobalApplication(tkinter.Tk):
 #find all the images
         self.image_list=[]
         here=os.curdir
-        for folder in os.listdir(here):
-            if os.path.isdir(folder):
-                for im_name in os.listdir(folder):
-                    if im_name[-4:] != '.png':
-                        continue
-                    src = cv2.imread(os.path.join(folder,im_name), 1)
-                    img = Image.fromarray(src)
-                    #nextim= ImageTk.PhotoImage(img)
-                    self.image_list.append({"f" : folder, "n" : im_name, "i" : img })
+        for jewel_name in os.listdir(here):
+            if os.path.isdir(jewel_name):
+                for folder in os.listdir(jewel_name):
+                    if os.path.isdir(os.path.join(jewel_name,folder)):
+                        for im_name in os.listdir(os.path.join(jewel_name,folder)):
+                            if im_name[-4:] != '.png':
+                                continue
+                            src = cv2.imread(os.path.join(jewel_name,folder,im_name), 1)
+                            img = Image.fromarray(src)
+                            self.image_list.append({"j" : jewel_name, "f" : folder, "n" : im_name, "i" : img })
         self.max_image=len(self.image_list)
         if self.max_image==0:
             print("No errors found, quitting!")
@@ -114,9 +115,10 @@ class GlobalApplication(tkinter.Tk):
         first_pos=self.image_list[self.curr_image]["n"].index("_")+1
         last_pos=self.image_list[self.curr_image]["n"].index(".")
         self.curr_type = self.node_types[ self.image_list[self.curr_image]["n"][first_pos:last_pos]  ]
+        self.curr_jewel_name = self.image_list[self.curr_image]["j"]
 
 #make a quit button
-        self.quitButton = tkinter.Button(self, width=12, text='Quit', bg='tan',
+        self.quitButton = tkinter.Button(self, width=12, text='Save and Quit', bg='tan',
                     command=self.close_app)
         self.quitButton.grid(row=0, column=0, padx=8, pady=8)
 
@@ -147,20 +149,20 @@ class GlobalApplication(tkinter.Tk):
         for a in self.fixed_mods:
             this_dict=a[1]
             this_img=self.image_list[a[0]]
-#self.image_list.append({"f" : folder, "n" : im_name, "i" : img })
+#self.image_list.append({"j" : jewel_name, "f" : folder, "n" : im_name, "i" : img })
             pos_under=this_img["n"].find("_")
             pos_pt=this_img["n"].find(".")
             node_number=this_img["n"][pos_under+1:pos_pt]
             json_name = this_img["n"][:pos_under]+".json"
-            f=open(os.path.join(this_img["f"],json_name), 'r')
+            f=open(os.path.join(this_img["j"],this_img["f"],json_name), 'r')
             old_dict=json.load(f)
             f.close()
             old_dict[node_number]=this_dict
-            f = open(os.path.join(this_img["f"],json_name), 'w')
+            f=open(os.path.join(this_img["j"],this_img["f"],json_name), 'w')
             json.dump(old_dict,f)
             f.close()
 #remove the image
-            os.remove(os.path.join(this_img["f"],this_img["n"]))
+            os.remove(os.path.join(this_img["j"],this_img["f"],this_img["n"]))
         self.destroy()
 
     def prev(self):
@@ -169,6 +171,7 @@ class GlobalApplication(tkinter.Tk):
         first_pos=self.image_list[self.curr_image]["n"].index("_")+1
         last_pos=self.image_list[self.curr_image]["n"].index(".")
         self.curr_type = self.node_types[ self.image_list[self.curr_image]["n"][first_pos:last_pos]  ]
+        self.curr_jewel_name = self.image_list[self.curr_image]["j"]
         self.update()
 
     def next(self):
@@ -177,6 +180,7 @@ class GlobalApplication(tkinter.Tk):
         first_pos=self.image_list[self.curr_image]["n"].index("_")+1
         last_pos=self.image_list[self.curr_image]["n"].index(".")
         self.curr_type = self.node_types[ self.image_list[self.curr_image]["n"][first_pos:last_pos]  ]
+        self.curr_jewel_name = self.image_list[self.curr_image]["j"]
         self.update()
 
 
@@ -192,9 +196,7 @@ class GlobalApplication(tkinter.Tk):
         self.name.set("Name")
         
         self.name_menu.destroy()
-        #self.name_options = list(reversed(sorted(list( self.passiveMods["Glorious Vanity"][self.curr_type].keys() ))))
-        #self.name_menu = tkinter.Spinbox( self, values=self.name_options, state='readonly')
-        self.name_options = sorted(list( self.passiveMods["Glorious Vanity"][self.curr_type].keys() ))
+        self.name_options = sorted(list( self.passiveMods[self.curr_jewel_name][self.curr_type].keys() ))
         self.name_menu = tkinter.OptionMenu( self, self.name, *self.name_options )
         self.name_menu.grid(row=2, column=0, padx=3, pady=3)
         self.mod1_menu.grid_forget()
@@ -216,7 +218,7 @@ class GlobalApplication(tkinter.Tk):
         curr_name=self.name.get()
         if self.curr_type=="regular":
             self.mod1_menu.destroy()
-            self.mod1_options=self.passiveMods["Glorious Vanity"][self.curr_type][curr_name]
+            self.mod1_options=self.passiveMods[self.curr_jewel_name][self.curr_type][curr_name]
             self.mod1.set("Mod1")
             self.mod1_menu = tkinter.OptionMenu( self, self.mod1, *self.mod1_options )
             self.mod1_menu.grid(row=2, column=1, padx=3, pady=3)
@@ -255,8 +257,8 @@ class GlobalApplication(tkinter.Tk):
             else:
                 self.mod1_menu.destroy()
                 self.mod2_menu.destroy()
-                self.mod1_options=self.passiveMods["Glorious Vanity"][self.curr_type][curr_name]
-                self.mod2_options=self.passiveMods["Glorious Vanity"][self.curr_type][curr_name]
+                self.mod1_options=self.passiveMods[self.curr_jewel_name][self.curr_type][curr_name]
+                self.mod2_options=self.passiveMods[self.curr_jewel_name][self.curr_type][curr_name]
                 self.mod1.set("Mod1")
                 self.mod2.set("Mod2")
                 self.mod1_menu = tkinter.OptionMenu( self, self.mod1, *self.mod1_options )
