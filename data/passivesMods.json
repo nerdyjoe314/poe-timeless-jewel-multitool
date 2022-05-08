@@ -1722,7 +1722,7 @@
             ]
         }
     },
-    "Leathal Pride": {
+    "Lethal Pride": {
         "regular": {
             "Example Name": [
                 "Example Stat"
@@ -1732,7 +1732,7 @@
             "Example Name": [
                 "+20 to Strength",
                 "5% increased Strength",
-                "20% increased Armor",
+                "20% increased Armour",
                 "0.4% of Attack Damage Leeched as Life",
                 "5% chance to deal Double Damage",
                 "4% increased maximum Life",
@@ -1747,7 +1747,7 @@
                 "+15% to Melee Critical Strike Multiplier",
                 "20% increased Physical Damage",
                 "8% increased Warcry Buff Effect",
-                "12% increased Totem Placement Speed",
+                "12% increased Totem Placement speed",
                 "20% increased Stun Duration on Enemies",
                 "Ignites you inflict deal Damage 10% faster",
                 "10% reduced Enemy Stun Threshold",
@@ -1967,6 +1967,12 @@
                 "Example Stat"
             ],
             "Powerful Faith": [
+                "Example Stat"
+            ],
+            "Frenzied Faith": [
+                "Example Stat"
+            ],
+            "Cloistered": [
                 "Example Stat"
             ],
             "Martyr's Might": [

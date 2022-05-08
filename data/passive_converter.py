@@ -111,6 +111,7 @@ group_str='"group":'
 node_list=[]
 notables_list=[]
 regulars_list=[]
+name_dict={}
 next_node_trigger='        },'
 end_trigger='    },'
 notable_flag='"isNotable": true'
@@ -126,6 +127,18 @@ while current_line<total_lines:
 		while node_num_line[node_com]!=',':
 			node_com+=1
 		node=int(node_num_line[node_pos+1:node_com])
+                #add the node name to name_dict
+		node_name_line=lined_input[current_line+3]
+		node_open_quote=0
+		while node_name_line[node_open_quote]!=':':
+			node_open_quote+=1
+		while node_name_line[node_open_quote]!='"':
+			node_open_quote+=1
+		node_close_quote=node_open_quote+2
+		while node_name_line[node_close_quote]!='"':
+			node_close_quote+=1
+		name_dict[node]=node_name_line[node_open_quote+1:node_close_quote]
+
 		#find group,orbit, orbitIndex
 		#check if this node is notable along the way
 		is_notable=False
@@ -229,6 +242,9 @@ for n in node_list:
 	if n[0] in regulars_list:
 		node_types[n[0]]="regular"
 
+f = open("name_dict.json", 'w')
+json.dump(name_dict,f)
+f.close()
 f = open("node_coords.json", 'w')
 json.dump(node_coords,f)
 f.close()
