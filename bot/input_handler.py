@@ -114,6 +114,10 @@ class InputHandler:
             speed_factor=speed_factor,
             button=None,
         )
+        #reset the clipboard to make sure we actually have the right data
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.CloseClipboard()
         self._copy(speed_factor)
         win32clipboard.OpenClipboard()
         data = win32clipboard.GetClipboardData()

@@ -81,12 +81,9 @@ class Bot:
 
                 self.tree_nav = TreeNavigator(self.resolution, self.halt)
                 analysis_time = datetime.utcnow()
-                name, description, socket_instances = self.tree_nav.eval_jewel(
+                name, description = self.tree_nav.eval_jewel(
                     jewel_location
                 )
-                if socket_instances is None:
-                    self.log.info("No socket instances returned. Exiting.")
-                    return
                 print(
                     "Jewel evaluation took %s seconds"
                     % (datetime.utcnow() - analysis_time).seconds
@@ -95,13 +92,6 @@ class Bot:
                     "Jewel evaluation took %s seconds"
                     % (datetime.utcnow() - analysis_time).seconds
                 )
-                for socket in socket_instances:
-                    socket["description"] = description
-                    socket["name"] = name
-                    socket["created"] = analysis_time
-                    socket["reporter"] = username
-
-#                self.store_items(socket_instances)
 
             if self.config["accept_trades"]:
                 self.trader.return_items(username, jewel_locations)

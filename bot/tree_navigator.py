@@ -42,6 +42,9 @@ TREE_BOUND_Y = [-9300,9250]
 TREE_BOUND_X = [-5525,5525]
 
 #pull node information from the processed tree
+f=open("data/name_dict.json", 'r')
+name_dict=json.load(f)
+f.close()
 f=open("data/node_coords.json", 'r')
 node_coords=json.load(f)
 f.close()
@@ -61,6 +64,14 @@ SOCKET_TYPE_DICT = {6230 : "normal", 48768 : "normal", 31683 : "normal",
 28475 : "normal", 33631 : "normal", 36634 : "normal", 41263 : "normal", 33989 : "normal", 34483 : "normal", 
 54127 : "normal", 26725 : "normal", 26196 : "normal", 61419 : "normal", 61834 : "normal", 60735 : "normal", 
 2491 : "cluster", 55190 : "cluster", 7960 : "cluster", 21984 : "cluster", 32763 : "cluster", 46882 : "cluster",}
+
+JEWEL_PROCESS_DICT = { 
+"Glorious Vanity": {"notable":["name","mods",2], "regular":["name","mods",1]}, 
+"Lethal Pride": {"notable":["mods",1]}, 
+"Brutal Restraint": {"notable":["mods",1]}, 
+"Elegant Hubris": {"notable":["name"]}, 
+"Militant Faith": {"notable":["name"]},
+}
 
 IMAGE_FOLDER = "data/images/"
 
@@ -119,13 +130,14 @@ class TreeNavigator:
         self.log = logging.getLogger("tree_nav")
         self.t2s_scale = self.resolution[1]/10000.0
         self.config = get_config("tree_nav")
-        self.modChars = re.compile("[^a-zA-Z\+0\.123456789% -]")
+        self.modChars = re.compile("[^a-zA-Z\+0\.123456789% \-',]")
         self.camera_position = (0,0)
         self.px_multiplier = 1
         self.resolution_prefix = str(self.resolution[1]) + "p_"
         self.templates_and_masks = self.load_templates()
         f=open("data/passivesMods.json")
         self.passivesModsData = json.load(f)
+        f.close()
         self.halt = halt_value
         self.first_run = True
 
@@ -135,6 +147,9 @@ class TreeNavigator:
     def eval_jewel(self, item_location):
 
         self.item_name, self.item_desc = self._setup(item_location, copy=True)
+        if self.item_name == "":
+            return self.item_name, self.item_desc
+            
 
         # Find the jewel number
         desc_words=self.item_desc.split(" ")
@@ -180,19 +195,35 @@ class TreeNavigator:
         for item_dict in item_stats:
             rerun_nodes=[]
             node_dict[item_dict["socket_id"]]={}
-            self._filter_ocr_lines(item_dict["socket_nodes"])
+            for a_node in item_dict["socket_nodes"]:
+                if "name" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    self._filter_ocr_name(a_node)
+                else:
+                    a_node.name=["Example Name"]
+            for a_node in item_dict["socket_nodes"]:
+                if "mods" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    self._filter_ocr_mods(a_node)
 
             for a_node in item_dict["socket_nodes"]:
-                #if we're missing the name, add the node to those we want to rerun and stop doing anything else
-                if len(a_node.name) == 0 or len(a_node.mods) == 0:
+#make sure the form matches the desired form based on jewel
+#if we wanted a name but didn't get one, try again.
+                if "name" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.name) == 0:
                     rerun_nodes.append(a_node)
                     continue
-                if node_types[str(a_node.id)] == "notable" and len(a_node.mods) == 1:
-                    rerun_nodes.append(a_node)
-                    continue
-                # otherwise, add the node to the dictionary
+#if we wanted one mod and didn't get it
+                if "mods" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    if 1 in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.mods) == 0:
+                        rerun_nodes.append(a_node)
+                        continue
+#if we wanted at least two mods and didn't get them
+                    if 2 in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.mods) < 2:
+                        rerun_nodes.append(a_node)
+                        continue
+# otherwise, add the node to the dictionary
                 node_dict[item_dict["socket_id"]][a_node.id]={"name" : a_node.name[0], "mods" : a_node.mods}
             jobs2[item_dict["socket_id"]] = pool.map_async(OCR.node_to_strings2, rerun_nodes)
+            print(len(rerun_nodes), end = ' ')
+        print('')
 
         second_item_stats = [
             {
@@ -202,31 +233,52 @@ class TreeNavigator:
             for socket_id in jobs2
         ]
 
+        minor_save_prefix = os.path.join(OUTPUT_FOLDER, str(self.item_name))
+        if not os.path.exists(minor_save_prefix):
+            os.makedirs(minor_save_prefix)
+
         # second pass at interpreting the ocr, only the previous failures come through here
         for item_dict in second_item_stats:
-            self._filter_ocr_lines(item_dict["socket_nodes"])
-            save_path = os.path.join(OUTPUT_FOLDER, str(jewel_number),str(item_dict["socket_id"])+".json")
-            save_prefix = os.path.join(OUTPUT_FOLDER, str(jewel_number))
+            for a_node in item_dict["socket_nodes"]:
+                if "name" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    self._filter_ocr_name(a_node)
+                else:
+                    a_node.name=["Example Name"]
+            for a_node in item_dict["socket_nodes"]:
+                if "mods" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    self._filter_ocr_mods(a_node)
+
+            save_path = os.path.join(minor_save_prefix, str(jewel_number),str(item_dict["socket_id"])+".json")
+            save_prefix = os.path.join(minor_save_prefix, str(jewel_number))
             if not os.path.exists(save_prefix):
                 os.makedirs(save_prefix)
 
+
             for a_node in item_dict["socket_nodes"]:
                 img_save_location = os.path.join(save_prefix, str(item_dict["socket_id"]) +"_"+ str(a_node.id)+".png")
-                # if we didn't even find a name or mod, we give up and save the image
-                if len(a_node.name) == 0 or len(a_node.mods) == 0:
+#make sure the form matches the desired form based on jewel
+#if we wanted a name but didn't get one, try again.
+                if "name" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.name) == 0:
                     img= Image.fromarray(a_node.img)
                     img.save(img_save_location)
                     print("failed to save. name:", a_node.name_text)
                     print("mods:", a_node.mod_text)
                     continue
-
-                # if we are a notable with only one mod, save the image and be done processing
-                if node_types[str(a_node.id)] == "notable" and len(a_node.mods) == 1:
-                    img= Image.fromarray(a_node.img)
-                    img.save(img_save_location)
-                    print("failed to save notable. name:", a_node.name_text)
-                    print("mods:", a_node.mod_text)
-                    continue
+#if we wanted one mod and didn't get it
+                if "mods" in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]]:
+                    if 1 in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.mods) == 0:
+                        img= Image.fromarray(a_node.img)
+                        img.save(img_save_location)
+                        print("failed to save. name:", a_node.name_text)
+                        print("mods:", a_node.mod_text)
+                        continue
+#if we wanted at least two mods and didn't get them
+                    if 2 in JEWEL_PROCESS_DICT[self.item_name][node_types[str(a_node.id)]] and len(a_node.mods) < 2:
+                        img= Image.fromarray(a_node.img)
+                        img.save(img_save_location)
+                        print("failed to save. name:", a_node.name_text)
+                        print("mods:", a_node.mod_text)
+                        continue
 
                 # finally write this to dictionary if it worked.
                 node_dict[item_dict["socket_id"]][a_node.id]={"name" : a_node.name[0], "mods" : a_node.mods}
@@ -242,7 +294,7 @@ class TreeNavigator:
 
         pool.close()
         pool.join()
-        return self.item_name, self.item_desc, item_stats
+        return self.item_name, self.item_desc
 
 
     def _move_screen_to_node(self, node_id):
@@ -428,6 +480,9 @@ class TreeNavigator:
         self._click_socket(node_location,offset)
         nodes =[]
         for node_id in node_ids:
+#if this jewel doesn't modify this node (in an upredictable way) we don't need to check it.
+            if node_types[str(node_id)] not in JEWEL_PROCESS_DICT[self.item_name].keys():
+                continue
             if not self._run():
                 return
             node_stats = self._get_node_data(node_id,offset)
@@ -582,51 +637,52 @@ class TreeNavigator:
 ###        return {"id": node["id"], "name" : [], "mods": [], "name_text": name_text, "mod_text": mod_text, "img": img}
 
 
-
-    def _filter_ocr_lines(self, nodes_lines):
-        for node in nodes_lines:
-            node_type = node_types[str(node.id)]
-            node.name=[]
-            node.mods=[]
-            for line in node.name_text:
-                filtered_name = self._filter_nonalpha(line)
-                if len(filtered_name)<4:
-                    continue
-                #print(filtered_name)
-                if filtered_name in self.modNames[node_type]:
-                    node.name.append(filtered_name)
-                if filtered_name[2:] in self.modNames[node_type]:
-                    node.name.append(filtered_name[2:])
-                if filtered_name[:-2] in self.modNames[node_type]:
-                    node.name.append(filtered_name[:-2])
-
-            if len(node.name)!=1:
-                #found the wrong number of names, give up on processing
-                node.name=[]
+    def _filter_ocr_name(self, node):
+        node_type = node_types[str(node.id)]
+        node.name=[]
+        local_valid_names=self.modNames[node_type]+[name_dict[str(node.id)]]
+        for line in node.name_text:
+            filtered_name = self._filter_nonalpha(line)
+            if len(filtered_name)<4:
                 continue
+            if filtered_name in local_valid_names:
+                node.name.append(filtered_name)
+            if filtered_name[2:] in local_valid_names:
+                node.name.append(filtered_name[2:])
+            if filtered_name[:-2] in local_valid_names:
+                node.name.append(filtered_name[:-2])
 
-            for line in node.mod_text:
-                filtered_line = self._filter_nonalpha(line)
-                if len(filtered_line) < 4 or filtered_line == "Unallocated":
-                    continue
-                if filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
-                    node.mods.append(filtered_line)
-                elif filtered_line[2:] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
-                    node.mods.append(filtered_line[2:])
-                elif filtered_line[:-2] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
-                    node.mods.append(filtered_line[:-2])
-                else:
-                    if self._contains_11(node.img):
-                        if "1%" in filtered_line:
-                            insert_location = filtered_line.find("1%")
-                            fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
-                            if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
-                                node.mods.append(fixed_filtered_line)
-                        elif "n%" in filtered_line:
-                            insert_location = filtered_line.find("n%")
-                            fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
-                            if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
-                                node.mods.append(fixed_filtered_line)
+        if len(node.name)!=1:
+            #found the wrong number of names, give up on processing
+            node.name=[]
+
+    def _filter_ocr_mods(self, node):
+        if len(node.name)==0:
+            return
+        node_type = node_types[str(node.id)]
+        node.mods=[]
+        for line in node.mod_text:
+            filtered_line = self._filter_nonalpha(line)
+            if len(filtered_line) < 4 or filtered_line == "Unallocated":
+                continue
+            if filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                node.mods.append(filtered_line)
+            elif filtered_line[2:] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                node.mods.append(filtered_line[2:])
+            elif filtered_line[:-2] in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                node.mods.append(filtered_line[:-2])
+            else:
+                if self._contains_11(node.img):
+                    if "1%" in filtered_line:
+                        insert_location = filtered_line.find("1%")
+                        fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
+                        if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                            node.mods.append(fixed_filtered_line)
+                    elif "n%" in filtered_line:
+                        insert_location = filtered_line.find("n%")
+                        fixed_filtered_line=filtered_line[:insert_location]+"11%"+filtered_line[insert_location+2:]
+                        if fixed_filtered_line in self.passivesModsData[self.item_name][node_type][node.name[0]]:
+                            node.mods.append(fixed_filtered_line)
 
 
 
@@ -641,8 +697,16 @@ class TreeNavigator:
             item = self.input_handler.inventory_copy(
                 *item_location, OWN_INVENTORY_ORIGIN, speed_factor=2
             )
-            item_desc = item.split("\n")[10].strip()
-            item_name = item.split("\n")[2].strip()
+            #if we have an empty slot, don't fail
+            if len(item.split("\n"))<3:
+                item_desc = ""
+                item_name = ""
+            else:
+                if "(implicit)" in item.split("\n")[10]:
+                    item_desc = item.split("\n")[12].strip()
+                else:
+                    item_desc = item.split("\n")[10].strip()
+                item_name = item.split("\n")[2].strip()
         self.input_handler.rnd_sleep(min=150, mean=200, sigma=100)
         self.input_handler.inventory_click(*item_location, OWN_INVENTORY_ORIGIN)
         self.input_handler.rnd_sleep(min=150, mean=200, sigma=100)
