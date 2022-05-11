@@ -37,7 +37,7 @@ desired_mods=[
 ]
 
 threshholds=[
-37,
+20,
 ]
 
 all_mod_options = [
@@ -121,16 +121,18 @@ num_mod_options=len(desired_mods)
 #all_mod_suffixes= [mod[mod.index('X')+1:] for mod in all_mod_options]
 #num_mod_options=len(all_mod_options)
 
-
-here=os.curdir
-for folder in os.listdir(here):
-    if os.path.isdir(folder):
-        for json_name in os.listdir(folder):
+count_fire=0
+jewel_name="Brutal Restraint"
+#here=os.curdir
+#for folder in os.listdir(here):
+for folder in os.listdir(jewel_name):
+    if os.path.isdir(os.path.join(jewel_name,folder)):
+        for json_name in os.listdir(os.path.join(jewel_name,folder)):
             mod_totals=[0 for _ in desired_mods]
-            if json_name[-5:] != '.json':
-#            if json_name != '61419.json':
+#            if json_name[-5:] != '.json':
+            if json_name != '31683.json':
                 continue
-            f = open(os.path.join(folder,json_name), 'r')
+            f = open(os.path.join(jewel_name,folder,json_name), 'r')
             socket_mods=json.load(f)
             f.close()
             socket_id=json_name[:-5]
@@ -140,6 +142,8 @@ for folder in os.listdir(here):
                     a=0
                     #print("Jewel number" +folder+ "is missing node"+str(node_id)+ "in socket"+socket_id)
                 else:
+                    if socket_mods[str(node_id)]["name"] == "Fire Damage":
+                        count_fire+=1
                     mods = socket_mods[str(node_id)]["mods"]
                     for mod in mods:
                         for i in range(num_mod_options):
@@ -161,3 +165,4 @@ for folder in os.listdir(here):
                      
                         
                     
+print(count_fire)
