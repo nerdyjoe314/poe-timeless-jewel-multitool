@@ -149,7 +149,6 @@ class TreeNavigator:
         self.item_name, self.item_desc = self._setup(item_location, copy=True)
         if self.item_name == "":
             return self.item_name, self.item_desc
-            
 
         # Find the jewel number
         desc_words=self.item_desc.split(" ")
@@ -157,6 +156,11 @@ class TreeNavigator:
         for word in desc_words:
             if not word.isalpha():
                 jewel_number=int(word)
+        #check if the jewel has already been evaluated
+        if os.path.exists(os.path.join(OUTPUT_FOLDER, str(self.item_name),str(jewel_number) )):
+            #put the jewel back
+            self._setup(item_location)
+            return self.item_name, self.item_desc
 
         pool = Pool(self.config["ocr_threads"])
         jobs = {}
@@ -222,8 +226,8 @@ class TreeNavigator:
 # otherwise, add the node to the dictionary
                 node_dict[item_dict["socket_id"]][a_node.id]={"name" : a_node.name[0], "mods" : a_node.mods}
             jobs2[item_dict["socket_id"]] = pool.map_async(OCR.node_to_strings2, rerun_nodes)
-            print(len(rerun_nodes), end = ' ')
-        print('')
+#            print(len(rerun_nodes), end = ' ')
+#        print('')
 
         second_item_stats = [
             {
@@ -703,7 +707,10 @@ class TreeNavigator:
                 item_name = ""
             else:
                 if "(implicit)" in item.split("\n")[10]:
-                    item_desc = item.split("\n")[12].strip()
+                    if "(implicit)" in item.split("\n")[11]:
+                        item_desc = item.split("\n")[13].strip()
+                    else:
+                        item_desc = item.split("\n")[12].strip()
                 else:
                     item_desc = item.split("\n")[10].strip()
                 item_name = item.split("\n")[2].strip()
