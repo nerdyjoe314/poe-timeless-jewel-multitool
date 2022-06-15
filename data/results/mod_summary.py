@@ -8,16 +8,25 @@ f = open(os.path.join(parent,neighbors), 'r')
 neighbor_dict = json.load(f)
 f.close()
  
+
+#brutal restraint nodes of interest:
+#13164 Divine Judgement
+#36949 Devotion
+#11730 Endurance
+#35958 Faith and Steel
+#33435 Holy Dominion
+#27137 Sanctum of Thought
+
 socket_names = {
-"6230": "Life-Mana Scion",
-"48768": "Spell-Attack Scion",
-"31683": "Proj-Res Scion",
-"28475": "Dualist-Marauder",
-"33631": "Marauder-Templar",
-"36634": "Templar-Witch",
-"41263": "Witch-Shadow",
-"33989": "Shadow-Ranger",
-"34483": "Ranger-Dualist",
+"6230": "Life-Mana Scion, topleft Scion",
+"48768": "Spell-Attack Scion, topright Scion",
+"31683": "Proj-Res Scion, bottom Scion",
+"28475": "Dualist-Marauder, Unwaivering Stance",
+"33631": "Marauder-Templar, Eternal Youth",
+"36634": "Templar-Witch, Mind over Matter",
+"41263": "Witch-Shadow, Pain attunment",
+"33989": "Shadow-Ranger, Supreme Ego",
+"34483": "Ranger-Dualist, Elemental Equilibrium",
 "54127": "Endurance-Frenzy",
 "2491": "Melee Cluster",
 "26725": "Endurance Charge",
@@ -37,7 +46,7 @@ desired_mods=[
 ]
 
 threshholds=[
-20,
+15,
 ]
 
 all_mod_options = [
@@ -122,28 +131,34 @@ num_mod_options=len(desired_mods)
 #num_mod_options=len(all_mod_options)
 
 count_fire=0
-jewel_name="Brutal Restraint"
+#jewel_name="Brutal Restraint"
+#jewel_name="Brutal Restraint"
+#jewel_name="Brutal Restraint"
+#jewel_name="Brutal Restraint"
+jewel_name="Elegant Hubris"
 #here=os.curdir
 #for folder in os.listdir(here):
 for folder in os.listdir(jewel_name):
     if os.path.isdir(os.path.join(jewel_name,folder)):
         for json_name in os.listdir(os.path.join(jewel_name,folder)):
             mod_totals=[0 for _ in desired_mods]
-#            if json_name[-5:] != '.json':
-            if json_name != '31683.json':
+            if json_name[-5:] != '.json':
+#            if json_name != '31683.json':
                 continue
             f = open(os.path.join(jewel_name,folder,json_name), 'r')
             socket_mods=json.load(f)
             f.close()
             socket_id=json_name[:-5]
             node_list = neighbor_dict [socket_id]
+            found=[0,0]
             for node_id in node_list:
                 if str(node_id) not in socket_mods.keys():
                     a=0
                     #print("Jewel number" +folder+ "is missing node"+str(node_id)+ "in socket"+socket_id)
                 else:
-                    if socket_mods[str(node_id)]["name"] == "Fire Damage":
-                        count_fire+=1
+                    if socket_mods[str(node_id)]["name"] == "Superiority":
+                        print("Jewel number: "+folder)
+                        print("Socket location: "+socket_names[socket_id])
                     mods = socket_mods[str(node_id)]["mods"]
                     for mod in mods:
                         for i in range(num_mod_options):
@@ -153,6 +168,9 @@ for folder in os.listdir(jewel_name):
                                 suf_numb = mod.index(desired_mod_suffixes[i])
                                 mod_numb = float(mod[pre_numb+len(desired_mod_prefixes[i]):suf_numb])
                                 mod_totals[i] =mod_totals[i]+mod_numb
+            if found==[1,1]:
+                print("Jewel number: "+folder)
+                print("Socket location: "+socket_names[socket_id])
             satisfying_thresholds=True
             for i in range(num_mod_options):
                 if mod_totals[i]<threshholds[i]:
