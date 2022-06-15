@@ -1,5 +1,32 @@
-Things to do:
-create a tool to "patch" the outputed json with human-powered ocr
+Pretty important:
+only save nodes if there's something unusal about them, only applies for the devotion jewels (militant faith or lethal pride)
+make mod_fixer handle all jewels
+-- mod_fixer handles them mostly well. For the jewels that add devotion, and when they don't change the notable, 
+-- but the name is misread, the name of the notable should appear in the list of valid options.
+
+Minor improvements:
+remove non-alpha numeric characters from beginning and end.
+-- lots of failures are ".... stunned." or "'12% increased ..."
+#some specific changes: Ayoid -> Avoid, iricreased -> increased, Scunned -> Stunned, Chance -> chance
+
+move the duplicate skip further outside the loop
+
 soup up "of the vaal" mod lists to account for triple (or QUADRUPLE?!?) mods
-add features for non-glorious vanity jewels
+make sure there's enough delay between putting in the jewel and arriving at the first node for the server/effect to change the nodes.
+-- this seems lag-dependent. Could do a very fast image detection. dunno
+add confirm changes option when closing mod_fixer
+
+config:
+config (yml) for finding jewel/node/socket combinations
 set up config for unlocked jewel sockets
+
+external tools:
+add pob import option
+
+
+notes:
+flask for self-server (python/javascript integration?)
+tornado (more complicated, same as flask?)
+
+170 sec per jewel for brutal restraint
+300 sec per jewel for glorious vanity
